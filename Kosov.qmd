@@ -3,29 +3,73 @@ title: "Astronomical pacing of the Lau biogeochemical Event captured in the Koso
 title-block-banner: "darkturquoise"
 subtitle: |
   A study on the imprint of astronomical cycles in the Kosov quarry spanning the Lau Event during the Silurian <br>
-author: "Michiel Arts and Anne-Christine da Silva (Quarto) and Michiel Arts (R package)"
-date: Oct-2026 
-#bibliography: #references.bib
-#doi: #https://doi.org/10.5281/zenodo.17020808
+author: 
+  - "Michiel Arts^1^"
+  - "Anne-Christine da Silva^1^"
+  - " " 
+  - " " 
+  - "1 - SEDICLIM lab, Department of Geology, University of Liege, Belgium" 
+date: Oct-2026
+bibliography: D:/Phd/documents/kosov/Kosov.bib
+csl: geology.csl
 format:
   html:
-    embed-resources: true
+    embed-resources: TRUE
     toc: true
     toc-depth: 3
-    code-fold: true
-    css: styles.css  # ← Link to your CSS file
-execute: 
+    code-fold: true         # code blocks can be toggled
+    css: styles.css
+    execute:
+      echo: true            # show code in HTML, but foldable
+      message: false
+      warning: false
+      cache: true
+  docx:
+    code-blocks: false       # hide all code in Word
+    execute:
+      echo: false            # ensure code is hidden
+      message: false
+      warning: false
+      cache: true
+execute:
   cache: true
 ---
-# 0. Load in the data for the study
-Load the induration record extracted from the litholog of Fryda, Jiri & Lehnert, Oliver & Frýdová, Barbora & Farkas, Juraj & Kubajko, Michal. (2020). Carbon and sulfur cycling during the mid-Ludfordian anomaly and the linkage with the late Silurian Lau/Kozlowskii Bioevent. Palaeogeography, Palaeoclimatology, Palaeoecology. 564. <doi:10.1016/j.palaeo.2020.110152>
-```{r}
-#| echo: true
+
+
+```{r Load in the data for the study}
+#| echo: FALSE
+#| results: hide
+# Detect output format
+
+renderstyle_echo <- if (knitr::is_html_output()) TRUE else FALSE
+
+# Set chunk options dynamically
+knitr::opts_chunk$set(
+  echo = renderstyle_echo)
+
+show_callout <- knitr::is_html_output()
+```
+
+```{r, results='asis', echo=FALSE}
+# Only show this callout in HTML
+if (knitr::is_html_output()) {
+  cat(
+'::: {.callout-note collapse="true"}
+
+This study is based onthe induration record extracted from the litholog of Fryda, Jiri & Lehnert, Oliver & Frýdová, Barbora & Farkas, Juraj & Kubajko, Michal. (2020). Carbon and sulfur cycling during the mid-Ludfordian anomaly and the linkage with the late Silurian Lau/Kozlowskii Bioevent. Palaeogeography, Palaeoclimatology, Palaeoecology. 564. <doi:10.1016/j.palaeo.2020.110152>
+
+:::'
+  , sep = "\n")
+}
+```
+
+
+```{r }
 #| results: hide
 #| warning: false
 #| fig.show: TRUE  
+setwd("D:/Phd/documents/kosov")
 
-#setwd("D:/Phd/documents/kosov")
 library(truncnorm)
 library(DescTools)
 library(rlist)
@@ -148,6 +192,796 @@ completed_series <-   function (wavelet = NULL,
   }
   return(completed_series)
 }
+#this function is needed to do the numerical age-modelling 
+
+curve2time_unc_anchor <- function (age_constraint = NULL, tracked_cycle_curve = NULL, 
+  tracked_cycle_period = NULL, tracked_cycle_period_unc = NULL, 
+  tracked_cycle_period_unc_dist = "n", n_simulations = 20, 
+  gap_constraints = NULL, proxy_data = NULL, cycles_check = NULL, 
+  uncer_cycles_check = NULL, max_runs = 1000, run_multicore = FALSE, 
+  verbose = FALSE, genplot = FALSE, keep_nr = 2, keep_all_time_curves = FALSE, 
+  dj = 1/200, lowerPeriod = 1, upperPeriod = 4600, omega_nr = 6, 
+  seed_nr = 1337, dir = TRUE) 
+{
+dat <- as.matrix(tracked_cycle_curve[, ])
+dat <- na.omit(dat)
+dat <- dat[order(dat[, 1], na.last = NA, decreasing = F), ]
+npts <- length(dat[, 1])
+start <- dat[1, 1]
+end <- dat[length(dat[, 1]), 1]
+x1 <- dat[1:(npts - 1), 1]
+x2 <- dat[2:(npts), 1]
+dx = x2 - x1
+dt = median(dx)
+xout <- seq(start, end, by = dt)
+npts <- length(xout)
+interp <- approx(dat[, 1], dat[, 2], xout, method = "linear", n = npts)
+interp_2 <- approx(dat[, 1], dat[, 3], xout, method = "linear", n = npts)
+tracked_cycle_curve_2 <- cbind(interp[[1]], interp[[2]], interp_2[[2]])
+out <- matrix(
+  data = NA,
+  nrow = nrow(tracked_cycle_curve_2),
+  ncol = n_simulations
+)
+multi_tracked <- tracked_cycle_curve_2
+age_curve <- tracked_cycle_curve_2[, c(1, 2)]
+x_axis <- tracked_cycle_curve_2[, c(1)]
+res_matrix <- matrix(data = NA,
+                     nrow = nrow(age_curve),
+                     ncol = n_simulations)
+if (verbose == TRUE) {
+  pb <- txtProgressBar(max = n_simulations, style = 3)
+  progress <- function(n)
+    setTxtProgressBar(pb, n)
+  opts <- list(progress = progress)
+}else {
+  opts = NULL
+}
+set.seed(seed_nr)
+if (nrow(age_constraint) > 0) {
+  if (run_multicore == FALSE) {
+    res_list <- list()
+    for (i in 1:n_simulations) {
+      check_astro_age <- matrix(
+        data = NA,
+        ncol = 1,
+        nrow = nrow(age_constraint)
+      )
+      anchor_depth <- matrix(
+        data = NA,
+        ncol = 1,
+        nrow = nrow(age_constraint)
+      )
+      anchor_age <- matrix(
+        data = NA,
+        ncol = 1,
+        nrow = nrow(age_constraint)
+      )
+      if (keep_all_time_curves == TRUE) {
+        time_curve_comb <- matrix(data = NA,
+                                  ncol = 0,
+                                  nrow = length(x_axis))
+      }
+      for (klm in 1:nrow(age_constraint)) {
+        if (age_constraint[klm, 4] == "u") {
+          check_astro_age[klm] <- runif(
+            1,
+            min = tracked_cycle_period -
+              tracked_cycle_period_unc,
+            max = tracked_cycle_period +
+              tracked_cycle_period_unc
+          )
+        }
+        if (age_constraint[klm, 4] == "n") {
+          check_astro_age[klm] <- rnorm(1,
+                                        mean = as.numeric(age_constraint[klm, 2]),
+                                        sd = as.numeric(age_constraint[klm, 3]))
+        }
+      }
+      anchor_astr <- 1
+      anchor_radio <- 0
+      sel_rws <- seq(from = 1,
+                     to = nrow(age_constraint),
+                     by = 1)
+      runs <- 0
+      anchor_diff <- matrix(data = NA,
+                            ncol = 0,
+                            nrow = length(sel_rws))
+      while (anchor_astr > anchor_radio) {
+        age_constraint_2 <- age_constraint[c(sel_rws), ]
+        check_astro_age_2 <- check_astro_age[c(sel_rws), ]
+        anchor_depth_2 <- anchor_depth[c(sel_rws), ]
+        anchor_age_2 <- anchor_age[c(sel_rws), ]
+        validator <- 1
+        while (validator == 1) {
+          new_curve <- multi_tracked[, c(1, 2)]
+          val <- rnorm(1, mean = multi_tracked[1, 2], sd = multi_tracked[1, 3])
+          pnorm_val <- 1 - pnorm(val,
+                                 mean = multi_tracked[1, 2],
+                                 sd = multi_tracked[1, 3],
+                                 lower.tail = FALSE)
+          for (j in 1:nrow(new_curve)) {
+            new_curve[j, 2] <- 1 / (qnorm(pnorm_val, mean = multi_tracked[j, 2], sd = multi_tracked[j, 3]))
+          }
+          if (tracked_cycle_period_unc_dist == "u") {
+            tracked_cycle_period_new <- runif(
+              1,
+              min = tracked_cycle_period -
+                tracked_cycle_period_unc,
+              max = tracked_cycle_period +
+                tracked_cycle_period_unc
+            )
+          }
+          if (tracked_cycle_period_unc_dist == "n") {
+            tracked_cycle_period_new <- rnorm(1, mean = tracked_cycle_period, sd = tracked_cycle_period_unc)
+          }
+          time_curve <- WaverideR::curve2time(
+            tracked_cycle_curve = new_curve,
+            tracked_cycle_period = tracked_cycle_period_new,
+            genplot = FALSE,
+            keep_editable = FALSE
+          )
+          dif_mat <- time_curve[2:(nrow(time_curve)), 2] - time_curve[1:(nrow(time_curve) -
+                                                                           1), 2]
+          dif_mat_min <- min(dif_mat)
+          if (dif_mat_min > 0) {
+            validator <- 0
+          }
+        }
+        if (dir == FALSE) {
+          time_curve[, 2] <- max(time_curve[, 2]) -
+            time_curve[, 2]
+        }
+        gaps_dur <- 0
+        if (is.null(gap_constraints) == FALSE) {
+          gaps_dur <- matrix(
+            data = NA,
+            nrow = nrow(gap_constraints[, ]),
+            ncol = 1
+          )
+          for (qx in 1:nrow(gap_constraints)) {
+            if (gap_constraints[qx, 4] == "u") {
+              if (as.numeric(gap_constraints[qx, 1]) -
+                  as.numeric(gap_constraints[qx, 2]) <
+                  0) {
+                a <- 0
+              }
+              else {
+                a <- as.numeric(gap_constraints[qx, 1]) - as.numeric(gap_constraints[qx, 2])
+              }
+              gap_dur_new <- runif(
+                1,
+                min = a,
+                max = as.numeric(gap_constraints[qx, 1]) + as.numeric(gap_constraints[qx, 2])
+              )
+            }
+            if (gap_constraints[qx, 4] == "n") {
+              gap_dur_new <- rnorm(
+                1,
+                mean = as.numeric(gap_constraints[qx, 1]),
+                sd = as.numeric(gap_constraints[qx, 2])
+              )
+              if (gap_dur_new < 0) {
+                gap_dur_new <- 0
+              }
+            }
+            gaps_dur[qx, 1] <- gap_dur_new
+            row_nr <- DescTools::Closest(time_curve[, 1],
+                                         as.numeric(gap_constraints[qx, 3]),
+                                         which = TRUE)
+            out_3 <- time_curve[, 2]
+            out_4 <- out_3[row_nr:length(out_3)]
+            if (dir == FALSE) {
+              out_4 <- out_4 - gap_dur_new
+              time_curve[, 2] <- c(out_3[1:(row_nr -
+                                              1)], (out_3[row_nr:length(out_3)] -
+                                                      gap_dur_new))
+            }
+            else {
+              out_4 <- (out_4 + gap_dur_new)
+              time_curve[, 2] <- c(out_3[1:(row_nr -
+                                              1)], (out_3[row_nr:length(out_3)] +
+                                                      gap_dur_new))
+            }
+          }
+        }
+        if (keep_all_time_curves == TRUE) {
+          time_curve_comb <- cbind(time_curve_comb, time_curve[, 2])
+        }
+        anchor_depth_2 <- matrix(data = NA,
+                                 ncol = 1,
+                                 nrow = length(sel_rws))
+        anchor_age_2 <- matrix(data = NA,
+                               ncol = 1,
+                               nrow = length(sel_rws))
+        anchor_astro_age <- matrix(data = NA,
+                                   ncol = 1,
+                                   nrow = length(sel_rws))
+        for (klm in 1:nrow(age_constraint_2)) {
+          if (age_constraint_2[klm, 7] == "u") {
+            anchor_depth_new <- runif(
+              1,
+              min = as.numeric(age_constraint_2[klm, 5]) - as.numeric(age_constraint_2[klm, 6]) /
+                2,
+              max = as.numeric(age_constraint_2[klm, 5]) + as.numeric(age_constraint_2[klm, 6]) /
+                2
+            )
+          }
+          if (age_constraint_2[klm, 7] == "n") {
+            anchor_depth_new <- rnorm(
+              1,
+              mean = as.numeric(age_constraint_2[klm, 4]),
+              sd = as.numeric(age_constraint_2[klm, 4])
+            )
+          }
+          if (age_constraint_2[klm, 7] == "t") {
+            trap_par <- as.numeric(unlist(strsplit(age_constraint_2[klm, 5], " +")))
+            anchor_depth_new <- trapezoid::rtrapezoid(
+              1,
+              min = trap_par[1],
+              mode1 = trap_par[2],
+              mode2 = trap_par[3],
+              max = trap_par[3],
+              n1 = 2,
+              n3 = 2,
+              alpha = 1
+            )
+          }
+          if (age_constraint_2[klm, 4] == "u") {
+            anchor_age_new <- runif(
+              1,
+              min = as.numeric(age_constraint_2[klm, 2]) - as.numeric(age_constraint_2[klm, 3]) /
+                2,
+              max = as.numeric(age_constraint_2[klm, 2]) + as.numeric(age_constraint_2[klm, 3]) /
+                2
+            )
+          }
+          if (age_constraint_2[klm, 4] == "n") {
+            anchor_age_new <- rnorm(
+              1,
+              mean = as.numeric(age_constraint_2[klm, 2]),
+              sd = as.numeric(age_constraint_2[klm, 3])
+            )
+          }
+          anchor_depth_2[klm] <- anchor_depth_new
+          anchor_age_2[klm] <- anchor_age_new
+          row_nr <- DescTools::Closest(time_curve[, 1], anchor_depth_2[klm], which = TRUE)
+          anchor_astro_age[klm] <- time_curve[row_nr, 2]
+        }
+        ages_radio <- anchor_age_2
+        ages_astro <- anchor_astro_age
+        ages_astro_anchored <- ages_astro
+        ages_sim <- cbind(ages_radio, ages_astro)
+        if(nrow(ages_sim)>=2){
+        ages_sim <- ages_sim[order(ages_sim[, 1]), ]}
+        check_astro_age_2 <- check_astro_age_2[order(check_astro_age_2)]
+        time_curve_anchored <- time_curve
+        
+        
+        if (ages_sim[1, 2] > ages_sim[nrow(ages_sim), 2]) {
+          a <- mean(ages_radio) + mean(ages_astro)
+          ages_astro_anchored <- a - ages_astro
+          time_curve_anchored[, 2] <- a - time_curve[, 2]
+        }
+        else {
+          a <- mean(ages_radio) - mean(ages_astro)
+          ages_astro_anchored <- a + ages_astro
+          time_curve_anchored[, 2] <- a + time_curve[, 2]
+        }
+        dif_radio <- abs(check_astro_age_2 - ages_radio)
+        dif_astro <- abs(check_astro_age_2 - ages_astro_anchored)
+        rown_nr <- order(dif_astro, decreasing = TRUE)[1]
+        dif_astro_2 <- dif_astro
+        dif_astro_2[, ] <- 0
+        dif_astro_2[rown_nr] <- 1
+        anchor_diff <- cbind(anchor_diff, dif_astro_2)
+        if ((sum(sign(dif_astro - dif_radio)) * -1) ==
+            nrow(age_constraint_2)) {
+          anchor_astro_age <- cbind(age_constraint[c(sel_rws), 1], ages_astro_anchored)
+          anchor_astr <- -1
+        }
+        else {
+          runs <- runs + 1
+        }
+        if (runs == max_runs) {
+          anchor_diff_rw_sum <- matrixStats::rowSums2(as.matrix(anchor_diff))
+          row_nr <- DescTools::Closest(anchor_diff_rw_sum,
+                                       max(anchor_diff_rw_sum),
+                                       which = TRUE)
+          if (length(sel_rws) <= keep_nr) {
+            anchor_diff <- anchor_diff[c(sel_rws)]
+            runs <- 0
+          }
+          else {
+            sel_rws <- sel_rws[-c(row_nr)]
+            anchor_diff <- anchor_diff[c(sel_rws)]
+            runs <- 0
+          }
+        }
+      }
+      if (keep_all_time_curves == TRUE) {
+        result <- list(time_curve_anchored[, 2],
+                       anchor_astro_age,
+                       gaps_dur,
+                       time_curve_comb)
+      }
+      else
+        (result <- list(time_curve_anchored[, 2], anchor_astro_age, gaps_dur))
+      res_list <- list.append(res_list, result)
+      if (verbose == TRUE) {
+        setTxtProgressBar(pb, i)
+      }
+    }
+  }
+  if (run_multicore == TRUE) {
+    numCores <- detectCores()
+    cl <- parallel::makeCluster(numCores - 2)
+    registerDoSNOW(cl)
+    i <- 1
+    fit <- foreach(i = 1:n_simulations, .options.snow = opts) %dopar%
+      {
+        
+        
+        check_astro_age <- matrix(
+          data = NA,
+          ncol = 1,
+          nrow = nrow(age_constraint)
+        )
+        anchor_depth <- matrix(
+          data = NA,
+          ncol = 1,
+          nrow = nrow(age_constraint)
+        )
+        anchor_age <- matrix(
+          data = NA,
+          ncol = 1,
+          nrow = nrow(age_constraint)
+        )
+        if (keep_all_time_curves == TRUE) {
+          time_curve_comb <- matrix(data = NA,
+                                    ncol = 0,
+                                    nrow = length(x_axis))
+        }
+        for (klm in 1:nrow(age_constraint)) {
+          if (age_constraint[klm, 4] == "u") {
+            check_astro_age[klm] <- runif(
+              1,
+              min = tracked_cycle_period -
+                tracked_cycle_period_unc,
+              max = tracked_cycle_period +
+                tracked_cycle_period_unc
+            )
+          }
+          if (age_constraint[klm, 4] == "n") {
+            check_astro_age[klm] <- rnorm(1,
+                                          mean = as.numeric(age_constraint[klm, 2]),
+                                          sd = as.numeric(age_constraint[klm, 3]))
+          }
+        }
+        anchor_astr <- 1
+        anchor_radio <- 0
+        sel_rws <- seq(from = 1,
+                       to = nrow(age_constraint),
+                       by = 1)
+        runs <- 0
+        anchor_diff <- matrix(data = NA,
+                              ncol = 0,
+                              nrow = length(sel_rws))
+        while (anchor_astr > anchor_radio) {
+          age_constraint_2 <- age_constraint[c(sel_rws), ]
+          check_astro_age_2 <- check_astro_age[c(sel_rws), ]
+          anchor_depth_2 <- anchor_depth[c(sel_rws), ]
+          anchor_age_2 <- anchor_age[c(sel_rws), ]
+          validator <- 1
+          while (validator == 1) {
+            new_curve <- multi_tracked[, c(1, 2)]
+            val <- rnorm(1, mean = multi_tracked[1, 2], sd = multi_tracked[1, 3])
+            pnorm_val <- 1 - pnorm(val,
+                                   mean = multi_tracked[1, 2],
+                                   sd = multi_tracked[1, 3],
+                                   lower.tail = FALSE)
+            for (j in 1:nrow(new_curve)) {
+              new_curve[j, 2] <- 1 / (qnorm(pnorm_val, mean = multi_tracked[j, 2], sd = multi_tracked[j, 3]))
+            }
+            if (tracked_cycle_period_unc_dist == "u") {
+              tracked_cycle_period_new <- runif(
+                1,
+                min = tracked_cycle_period - tracked_cycle_period_unc,
+                max = tracked_cycle_period + tracked_cycle_period_unc
+              )
+            }
+            if (tracked_cycle_period_unc_dist == "n") {
+              tracked_cycle_period_new <- rnorm(1, mean = tracked_cycle_period, sd = tracked_cycle_period_unc)
+            }
+            time_curve <- WaverideR::curve2time(
+              tracked_cycle_curve = new_curve,
+              tracked_cycle_period = tracked_cycle_period_new,
+              genplot = FALSE,
+              keep_editable = FALSE
+            )
+            dif_mat <- time_curve[2:(nrow(time_curve)), 2] - time_curve[1:(nrow(time_curve) -
+                                                                             1), 2]
+            dif_mat_min <- min(dif_mat)
+            if (dif_mat_min > 0) {
+              validator <- 0
+            }
+          }
+          if (dir == FALSE) {
+            time_curve[, 2] <- max(time_curve[, 2]) -
+              time_curve[, 2]
+          }
+          gaps_dur <- 0
+          if (is.null(gap_constraints) == FALSE) {
+            gaps_dur <- matrix(
+              data = NA,
+              nrow = nrow(gap_constraints[, ]),
+              ncol = 1
+            )
+            for (qx in 1:nrow(gap_constraints)) {
+              if (gap_constraints[qx, 4] == "u") {
+                if (as.numeric(gap_constraints[qx, 1]) - as.numeric(gap_constraints[qx, 2]) < 0) {
+                  a <- 0
+                }
+                else {
+                  a <- as.numeric(gap_constraints[qx, 1]) - as.numeric(gap_constraints[qx, 2])
+                }
+                gap_dur_new <- runif(
+                  1,
+                  min = a,
+                  max = as.numeric(gap_constraints[qx, 1]) + as.numeric(gap_constraints[qx, 2])
+                )
+              }
+              if (gap_constraints[qx, 4] == "n") {
+                gap_dur_new <- rnorm(
+                  1,
+                  mean = as.numeric(gap_constraints[qx, 1]),
+                  sd = as.numeric(gap_constraints[qx, 2])
+                )
+                if (gap_dur_new < 0) {
+                  gap_dur_new <- 0
+                }
+              }
+              gaps_dur[qx, 1] <- gap_dur_new
+              row_nr <- DescTools::Closest(time_curve[, 1],
+                                           as.numeric(gap_constraints[qx, 3]),
+                                           which = TRUE)
+              out_3 <- time_curve[, 2]
+              out_4 <- out_3[row_nr:length(out_3)]
+              if (dir == FALSE) {
+                out_4 <- out_4 - gap_dur_new
+                time_curve[, 2] <- c(out_3[1:(row_nr -
+                                                1)], (out_3[row_nr:length(out_3)] -
+                                                        gap_dur_new))
+              }
+              else {
+                out_4 <- (out_4 + gap_dur_new)
+                time_curve[, 2] <- c(out_3[1:(row_nr -
+                                                1)], (out_3[row_nr:length(out_3)] +
+                                                        gap_dur_new))
+              }
+            }
+          }
+          if (keep_all_time_curves == TRUE) {
+            time_curve_comb <- cbind(time_curve_comb, time_curve[, 2])
+          }
+          anchor_depth_2 <- matrix(data = NA,
+                                   ncol = 1,
+                                   nrow = length(sel_rws))
+          anchor_age_2 <- matrix(data = NA,
+                                 ncol = 1,
+                                 nrow = length(sel_rws))
+          anchor_astro_age <- matrix(data = NA,
+                                     ncol = 1,
+                                     nrow = length(sel_rws))
+          for (klm in 1:nrow(age_constraint_2)) {
+            if (age_constraint_2[klm, 7] == "u") {
+              anchor_depth_new <- runif(
+                1,
+                min = as.numeric(age_constraint_2[klm, 5]) - as.numeric(age_constraint_2[klm, 6]) /
+                  2,
+                max = as.numeric(age_constraint_2[klm, 5]) + as.numeric(age_constraint_2[klm, 6]) /
+                  2
+              )
+            }
+            if (age_constraint_2[klm, 7] == "n") {
+              anchor_depth_new <- rnorm(
+                1,
+                mean = as.numeric(age_constraint_2[klm, 4]),
+                sd = as.numeric(age_constraint_2[klm, 4])
+              )
+            }
+            if (age_constraint_2[klm, 7] == "t") {
+              trap_par <- as.numeric(unlist(strsplit(age_constraint_2[klm, 5], " +")))
+              anchor_depth_new <- trapezoid::rtrapezoid(
+                1,
+                min = trap_par[1],
+                mode1 = trap_par[2],
+                mode2 = trap_par[3],
+                max = trap_par[3],
+                n1 = 2,
+                n3 = 2,
+                alpha = 1
+              )
+            }
+            if (age_constraint_2[klm, 4] == "u") {
+              anchor_age_new <- runif(
+                1,
+                min = as.numeric(age_constraint_2[klm, 2]) - as.numeric(age_constraint_2[klm, 3]) /
+                  2,
+                max = as.numeric(age_constraint_2[klm, 2]) + as.numeric(age_constraint_2[klm, 3]) /
+                  2
+              )
+            }
+            if (age_constraint_2[klm, 4] == "n") {
+              anchor_age_new <- rnorm(
+                1,
+                mean = as.numeric(age_constraint_2[klm, 2]),
+                sd = as.numeric(age_constraint_2[klm, 3])
+              )
+            }
+            anchor_depth_2[klm] <- anchor_depth_new
+            anchor_age_2[klm] <- anchor_age_new
+            row_nr <- DescTools::Closest(time_curve[, 1], anchor_depth_2[klm], which = TRUE)
+            anchor_astro_age[klm] <- time_curve[row_nr, 2]
+          }
+          ages_radio <- anchor_age_2
+          ages_astro <- anchor_astro_age
+          ages_astro_anchored <- ages_astro
+          ages_sim <- cbind(ages_radio, ages_astro)
+        if(nrow(ages_sim)>=2){
+        ages_sim <- ages_sim[order(ages_sim[, 1]), ]}
+          check_astro_age_2 <- check_astro_age_2[order(check_astro_age_2)]
+          time_curve_anchored <- time_curve
+
+          if (ages_sim[1, 2] > ages_sim[nrow(ages_sim), 2]) {
+            a <- mean(ages_radio) + mean(ages_astro)
+            ages_astro_anchored <- a - ages_astro
+            time_curve_anchored[, 2] <- a - time_curve[, 2]
+          }
+          else {
+            a <- mean(ages_radio) - mean(ages_astro)
+            ages_astro_anchored <- a + ages_astro
+            time_curve_anchored[, 2] <- a + time_curve[, 2]
+          }
+          dif_radio <- abs(check_astro_age_2 - ages_radio)
+          dif_astro <- abs(check_astro_age_2 - ages_astro_anchored)
+          rown_nr <- order(dif_astro, decreasing = TRUE)[1]
+          dif_astro_2 <- dif_astro
+          dif_astro_2[, ] <- 0
+          dif_astro_2[rown_nr] <- 1
+          anchor_diff <- cbind(anchor_diff, dif_astro_2)
+          sel_proxy_nr <- round(runif(
+            n = 1,
+            min = 1,
+            max = length(proxy_data)
+          ), 0)
+          my.data <- proxy_data[[sel_proxy_nr]]
+          out <- time_curve_anchored
+          completed_series <- na.omit(out)
+          yleft_comp <- completed_series[1, 2]
+          yright_com <- completed_series[nrow(completed_series), 2]
+          app <- approx(
+            x = out[, 1],
+            y = out[, 2],
+            xout = my.data[, 1],
+            method = "linear",
+            yleft = yleft_comp,
+            yright = yright_com
+          )
+          completed_series <- as.data.frame(cbind(app$y, my.data[, 2]))
+          dat <- as.matrix(completed_series)
+          dat <- na.omit(dat)
+          dat <- dat[order(dat[, 1], na.last = NA, decreasing = F), ]
+          npts <- length(dat[, 1])
+          start <- dat[1, 1]
+          end <- dat[length(dat[, 1]), 1]
+          x1 <- dat[1:(npts - 1), 1]
+          x2 <- dat[2:(npts), 1]
+          dx = x2 - x1
+          dt = median(dx)
+          xout <- seq(start, end, by = dt)
+          npts <- length(xout)
+          interp <- approx(dat[, 1], dat[, 2], xout, method = "linear", n = npts)
+          completed_series <- as.data.frame(interp)
+          wt_res <- WaverideR::analyze_wavelet(
+            data = completed_series,
+            dj = dj,
+            lowerPeriod = lowerPeriod,
+            upperPeriod = upperPeriod,
+            verbose = FALSE,
+            omega_nr = omega_nr
+          )
+          avg_wt <- cbind(wt_res$Period, wt_res$Power.avg)
+          avg_wt <- WaverideR::max_detect(data = avg_wt, pts = 5)
+          mtm_res_test <- is.na(avg_wt)
+          mtm_res_test <- mtm_res_test[1]
+          if (mtm_res_test == TRUE) {
+            runs <- runs + 1
+          }
+          else if ((sum(sign(dif_astro - dif_radio)) *
+                    -1) == nrow(age_constraint_2) |
+                   nrow(age_constraint_2) ==
+                   1) {
+            mtm_per <- avg_wt[, 1]
+            high_vals <- cycles_check + uncer_cycles_check
+            low_vals <- cycles_check - uncer_cycles_check
+            check <- matrix(
+              data = NA,
+              nrow = length(cycles_check),
+              ncol = 1
+            )
+            for (i in 1:length(cycles_check)) {
+              check[i, 1] <- any(mtm_per < high_vals[i] &
+                                   mtm_per > low_vals[i])
+            }
+            if (sum(check) == length(cycles_check)) {
+              anchor_astro_age <- cbind(age_constraint[c(sel_rws), 1], ages_astro_anchored)
+              anchor_astr <- -1
+            }
+            else {
+              runs <- runs + 1
+              print(runs)
+            }
+          }
+          else {
+            runs <- runs + 1
+            print(runs)
+          }
+          if (runs == max_runs) {
+            anchor_diff_rw_sum <- matrixStats::rowSums2(as.matrix(anchor_diff))
+            row_nr <- DescTools::Closest(anchor_diff_rw_sum,
+                                         max(anchor_diff_rw_sum),
+                                         which = TRUE)
+            if (length(sel_rws) <= keep_nr) {
+              anchor_diff <- anchor_diff[c(sel_rws)]
+              runs <- 0
+            }
+            else {
+              sel_rws <- sel_rws[-c(row_nr)]
+              anchor_diff <- anchor_diff[c(sel_rws)]
+              runs <- 0
+            }
+          }
+        }
+        time_curve_anchored <- time_curve_anchored[, 2]
+        if (keep_all_time_curves == TRUE) {
+          result <- list(time_curve_anchored,
+                         anchor_astro_age,
+                         gaps_dur,
+                         time_curve_comb)
+        }
+        else {
+          (result <- list(time_curve_anchored, anchor_astro_age, gaps_dur))
+        }
+      }
+    res_list <- fit
+    stopCluster(cl)
+  }
+}
+result_matrix <- matrix(data = NA,
+                        nrow = nrow(age_curve),
+                        ncol = 0)
+res_radio <- matrix(data = NA, nrow = 0, ncol = 2)
+colnames(res_radio) <- c("name", "age")
+res_time_runs <- matrix(data = NA,
+                        nrow = length(x_axis),
+                        ncol = 0)
+if (is.null(gap_constraints) == FALSE & keep_all_time_curves ==
+    FALSE) {
+  res_gap <- matrix(data = NA,
+                    nrow = 0,
+                    ncol = nrow(gap_constraints))
+  colnames(res_gap) <- c(gap_constraints[, 3])
+  for (i in 1:length(res_list)) {
+    time_curve <- res_list[[i]][[1]]
+    new_anchor_dates <- res_list[[i]][[2]]
+    new_gap_dur <- res_list[[i]][[3]]
+    result_matrix <- cbind(result_matrix, time_curve)
+    colnames(new_anchor_dates) <- c("name", "age")
+    res_radio <- rbind(res_radio, new_anchor_dates)
+    new_gap_dur <- t(new_gap_dur)
+    colnames(new_gap_dur) <- c(gap_constraints[, 3])
+    res_gap <- rbind(as.matrix(res_gap), new_gap_dur)
+    res_radio_split <- split(x = res_radio[, 2], f = as.factor(unique(res_radio[, 1])))
+    for (i in 1:length(res_radio_split)) {
+      res_radio_split[[i]] <- as.numeric(res_radio_split[[i]])
+    }
+  }
+  result <- list(x_axis, result_matrix, res_gap, res_radio_split)
+}
+if (is.null(gap_constraints) == TRUE & keep_all_time_curves ==
+    FALSE) {
+  for (i in 1:length(res_list)) {
+    time_curve <- res_list[[i]][[1]]
+    new_anchor_dates <- res_list[[i]][[2]]
+    result_matrix <- cbind(result_matrix, time_curve)
+    colnames(new_anchor_dates) <- c("name", "age")
+    res_radio <- rbind(res_radio, new_anchor_dates)
+    res_radio_split <- split(x = res_radio[, 2], f = as.factor(unique(res_radio[, 1])))
+    for (i in 1:length(res_radio_split)) {
+      res_radio_split[[i]] <- as.numeric(res_radio_split[[i]])
+    }
+  }
+  result <- list(x_axis, result_matrix, res_radio_split)
+}
+if (is.null(gap_constraints) == FALSE & keep_all_time_curves ==
+    TRUE) {
+  res_gap <- matrix(data = NA,
+                    nrow = 0,
+                    ncol = nrow(gap_constraints))
+  colnames(res_gap) <- c(gap_constraints[, 3])
+  for (i in 1:length(res_list)) {
+    time_curve <- res_list[[i]][[1]]
+    new_anchor_dates <- res_list[[i]][[2]]
+    new_gap_dur <- res_list[[i]][[3]]
+    time_curve_all <- res_list[[i]][[4]]
+    result_matrix <- cbind(result_matrix, time_curve)
+    colnames(new_anchor_dates) <- c("name", "age")
+    res_radio <- rbind(res_radio, new_anchor_dates)
+    new_gap_dur <- t(new_gap_dur)
+    colnames(new_gap_dur) <- c(gap_constraints[, 3])
+    res_gap <- rbind(as.matrix(res_gap), new_gap_dur)
+    res_time_runs <- cbind(res_time_runs, time_curve_all)
+    res_radio_split <- split(x = res_radio[, 2], f = as.factor(unique(res_radio[, 1])))
+    for (i in 1:length(res_radio_split)) {
+      res_radio_split[[i]] <- as.numeric(res_radio_split[[i]])
+    }
+  }
+  result <- list(x_axis,
+                 result_matrix,
+                 res_gap,
+                 res_radio_split,
+                 res_time_runs)
+}
+if (is.null(gap_constraints) == TRUE & keep_all_time_curves ==
+    TRUE) {
+  for (i in 1:length(res_list)) {
+    time_curve <- res_list[[i]][[1]]
+    new_anchor_dates <- res_list[[i]][[2]]
+    time_curve_all <- res_list[[i]][[4]]
+    result_matrix <- cbind(result_matrix, time_curve)
+    colnames(new_anchor_dates) <- c("name", "age")
+    res_radio <- rbind(res_radio, new_anchor_dates)
+    res_time_runs <- cbind(res_time_runs, time_curve_all)
+    res_radio_split <- split(x = res_radio[, 2], f = as.factor(unique(res_radio[, 1])))
+    for (i in 1:length(res_radio_split)) {
+      res_radio_split[[i]] <- as.numeric(res_radio_split[[i]])
+    }
+  }
+  result <- list(x_axis, result_matrix, res_radio_split, res_time_runs)
+}
+if (genplot == TRUE) {
+  plot(
+    age_constraint[, 5],
+    age_constraint[, 2],
+    col = "black",
+    cex = 2,
+    type = "p",
+    ylim = c(min(result[[2]]), max(result[[2]])),
+    xlim = c(max(x_axis), min(x_axis))
+  )
+  points(
+    age_constraint[, 5],
+    as.numeric(age_constraint[, 2]) + 2 * as.numeric(age_constraint[, 3]),
+    col = "red",
+    cex = 1,
+    pch = 6
+  )
+  points(
+    age_constraint[, 5],
+    as.numeric(age_constraint[, 2]) - 2 * as.numeric(age_constraint[, 3]),
+    col = "blue",
+    cex = 1,
+    pch = 2
+  )
+  res <- result[[2]]
+  sds <- rowSds(result[[2]])
+  lines(x_axis, rowMeans(result[[2]]), col = "black")
+  lines(x_axis, rowMeans(result[[2]]) + 2 * sds, col = "red")
+  lines(x_axis, rowMeans(result[[2]]) - 2 * sds, col = "blue")
+}
+  return(result)
+}
 
 induration <- read.csv(
   "https://raw.githubusercontent.com/stratigraphy/Kosov-cyclostrat/main/induration.csv"
@@ -211,29 +1045,60 @@ stop_for_status(url_2_get)
 # Read the JPEG from the raw content
 img_2 <- readJPEG(content(url_2_get, "raw"))
 
+my_data <- data.frame(
+  Interval = c("Entire record",
+               "Lau biogeochemical Event", 
+               "LKB Event (trace metal peak)",
+               "R-zone", 
+               "S-Zone", 
+               "F-Zone",
+               "Ludlow part section",
+               "Pridoli part section"),
+  position_bottom =c(-7.20,
+               -0.4, 
+               -0.4,
+               0, 
+               1.4, 
+               11.6,
+               0,
+               22),
+  position_top=c(25,
+               20, 
+               0,
+               1.4, 
+               11.6, 
+               20,
+               22,
+               25))
+my_data$age_bottom <- NA
+my_data$uncertainty_age_bottom <- NA
+my_data$age_top <- NA
+my_data$uncertainty_age_top <- NA
+my_data$duration <- NA
+my_data$uncertainty <- NA
 ```
 
 # Abstract
-The Kosov Quarry section in the Prague Basin preserves one of the most complete Silurian successions spanning the Lau biogeochemical Event This interval records major perturbations in the carbon cycle, climate cooling, redox fluctuations, and faunal turnover, yet the pacing and duration of these changes remain poorly constrained. Leveraging its exceptional completeness, we developed a new astrochronology based on the induration record, which allows the identification of cycles ranging from the half-precession to the 405-kyr eccentricity cycle. The astrochronology indicates that the Lau Event lasted 1.26 ± 0.26 Myr, whereas the LKB Event was much shorter, at only 30 ± 10 kyr. Astronomical forcing is expressed not only in the induration record but also in the rate-of-change (‰/kyr) of the δ13Ccarb curve and in the lag-1 sea-level proxy. The δ13Ccarb rate-of-change record shows a strong 100-kyr eccentricity imprint during the onset of the Lau Event, reaching a maximum of 0.08 ‰/kyr. Similarly, the lag-1 sea-level record is dominated by the 405-kyr eccentricity cycle and appears in-phase with insolation, consistent with (405-kyr) eccentricity-paced glacio-eustatic sea-level fluctuations during the Ludlow.
 
-
+The Kosov Quarry section in the Prague Basin preserves one of the most complete Silurian successions spanning the Lau biogeochemical Event. This interval records major perturbations in the carbon cycle, climate cooling, redox fluctuations, and faunal turnover, yet the pacing and duration of these changes remain poorly constrained. Leveraging its exceptional completeness, we developed a new astrochronology based on the induration record, which allows the identification of cycles ranging from the half-precession to the 405-kyr eccentricity cycle. The astrochronology indicates that the Lau biogeochemical Event started at 424.06 ± 0.55 Ma and lasted 0.87 ± 0.03 Myr, while the associated Lau-Kozlowski Bio-event was much shorter at 30 ± 10 kyr. Astronomical forcing is expressed not only in the induration record but also in the rate of change (‰/kyr) of the δ13Ccarb curve and in the lag-1 sea-level proxy. The δ13Ccarb rate-of-change record shows a strong 100-kyr eccentricity imprint during the onset of the Lau Event, reaching a maximum of 0.09 ‰/kyr. Similarly, the lag-1 sea-level record is dominated by the 405-kyr eccentricity cycle and appears in-phase with insolation, consistent with (405-kyr) eccentricity-paced glacio-eustatic sea-level fluctuations during the Ludlow.
 
 # 1. Introduction
-The Lau biogeochemical Event is associated with one of the largest carbon cycle perturbation of the entire Phanerozoic. The Lau biogeochemical Event is marked by a large positive δ¹³C excursion, faunal turnover, and evidence for sea-level and redox fluctuations (Frýda and Manda, 2013; Frýda et al., 2021). These changes point to tight coupling between the carbon cycle, climate, and oceanographic processes, yet the tempo, pacing, and internal structure of the Event remain poorly constrained. Without a precise temporal framework, it is not possible to determine whether the Lau reflects a brief perturbation or a protracted interval of instability.
 
-To address this, we will conduct a cyclostratigraphic study on the Kosov quarry, which provides a near complete archive allowing us to establish a high-resolution astrochronological framework for the Lau Event. The induration record will form the basis for the construction of the astrochronology which will allow us to assign durations and associated uncertainties to the Lau biogeochemical Event and its associated (sub)intervals. The lag-1 sea-level proxy will be derived from from the tuned induration record which will provide constraints and insights into sea-level variability during the Lau biogeochemical Even. The rate of change (‰/kyr) calculated from the δ13Ccarb record will be used to gain insights into carbon cycle dynamics during the Lau biogeochemical Event. Furthermore the imprint of astronomical cycles in the induration rate of change (‰/kyr) and lag-1 sea-level will be delineates to understand role that astronomical cycles might have played in pacing the climate, organic carbon burial and sea-level variations during the Lau biogeochemical Event. 
+The Lau biogeochemical Event is associated with one of the largest carbon cycle perturbations of the entire Phanerozoic. The Lau biogeochemical Event is marked by a large positive δ¹³C excursion, faunal turnover, and evidence for sea-level and redox fluctuations [@frydaLonglastingSteadyPeriod2013; @frydaCarbonSulfurCycling2020]. These changes indicate a tight coupling between the carbon cycle, climate, and oceanographic processes; however, the tempo, pacing, and internal structure of the Event remain poorly constrained. Without a precise temporal framework, it is not possible to determine whether the Lau reflects a brief perturbation or a protracted interval of instability.
+
+To address this, we will conduct a cyclostratigraphic study on the Kosov quarry section, which provides a nearly complete archive, allowing us to establish a high-resolution astrochronological framework for the Lau biogeochemical Event. The induration record will form the basis for constructing the astrochronology, which will enable us to assign durations and associated uncertainties to the Lau biogeochemical Event and its associated (sub)intervals. The lag-1 sea-level proxy will be derived from the tuned induration record, which will provide constraints and insights into sea-level variability during the Lau biogeochemical event. The rate of change (‰/kyr) calculated from the δ13Ccarb record will be used to gain insights into carbon cycle dynamics during the Lau biogeochemical Event. Furthermore, the imprint of astronomical cycles on the  δ13Ccarb rate of change (‰/kyr) and lag-1 sea-level will be delineated to understand the role that astronomical cycles might have played in pacing climate, organic carbon burial, and sea-level variations during the Lau biogeochemical Event.
 
 ## 1.1 Geological setting
-Our study focuses on upper Silurian (Ludfordian) strata of the Prague Basin, a sedimentary succession within the Barrandian (Teplá-Barrandian terrane) (ref) (Figure 1). During the Ludfordian, this block was located at ~25–30°S (Tasáryová et al., 2014,Scotes 2021). Facies distribution indicates hemipelagic deposition surrounded by shallow- to deeper-marine environments (Horný, 1955; Kříž, 1991). The Barrandian’s geodynamic setting—whether peri-Gondwanan or an isolated micro continent (Perunica)—remains debated (e.g., Havlíček et al., 1994; Cocks and Torsvik, 2013).
+
+Our study focuses on upper Silurian (Ludfordian) strata of the Prague Basin, a sedimentary succession within the Barrandian (Teplá-Barrandian terrane) [@frydaCarbonSulfurCycling2020; @frydaMidLudfordianLateSilurian2021; @frydaLonglastingSteadyPeriod2013] (Figure 1). During the Ludfordian, this block was located at \~25–30°S [@tasaryovaGorstianPalaeopositionGeotectonic2014; @scoteseAtlasPhanerozoicPaleogeographic2021a]. Facies distribution indicates hemipelagic deposition surrounded by shallow- to deeper-marine environments [@hornyBaseVrstevKopaninskych1955b; @krizSilurianPragueBasin1991]. It remains debated whether the Barrandian’s geodynamic setting belongs to the peri-Gondwanan terrains or is its own isolated Perunica microcontinent [@fatkaMicrocontinentPerunicaStatus2009].
 
 ```{r}
-#| echo: true
 #| results: hide
 #| warning: false
 #| fig.show: TRUE  
 #| fig-width: 7
 #| fig-height: 7
-#| fig.cap: "Figure 1. Regional overview of the Kosov section. Copied from Fryda et al., (2021)"
+#| fig.cap: "Figure 1. Regional overview of the Kosov section. Copied from Fryda et al. (2020)"
 par(mar = c(4, 2, 2, 2))
 
 # Empty plot to define margins and space in the panel
@@ -246,28 +1111,33 @@ usr <- par("usr")  # c(x1, x2, y1, y2)
 rasterImage(img_2, usr[1], usr[3], usr[2], usr[4])
 par(mar = c(4, 6, 2, 2))
 
+
 ```
-The studied Kosov section (No.JF195; 49°56′12.2″N, 14°03′20.1″E) provides one of the most complete global records of the mid-Ludfordian carbon isotope excursion (Frýda and Manda, 2013,Frýda et al.,2021) (Figure 2). The succession comprises carbonates with marly interbeds and shales, including micritic mudstones, skeletal limestones, and crinoidal grainstones (Kříž, 1992; Lehnert et al., 2007a). This site has been widely studied for its sedimentology, palaeontology, and faunal changes across the LKB and MLCIE (e.g., Kříž, 1992; Štorch, 1995; Manda and Kříž, 2006; Frýda and Manda, 2013).
+
+The studied Kosov section (No.JF195; 49°56′12.2″N, 14°03′20.1″E) provides one of the most complete global records of the mid-Ludfordian carbon isotope excursion [@frydaLonglastingSteadyPeriod2013; @frydaCarbonSulfurCycling2020; @frydaMidLudfordianLateSilurian2021] (Figure 2).The succession comprises carbonates with marly interbeds and shales, including micritic mudstones, skeletal limestones, and crinoidal grainstones [@krizSilurianFieldExcursions1992; @lehnertD13CRecordsLate2007]. The site has been widely studied for its sedimentology, palaeontology, and faunal changes across the Lau/Kozlowskii Bioevent (LKB) and Mid-Ludfordian Carbon Isotope Excursion (MLCIE) [@krizSilurianFieldExcursions1992; @frydaLonglastingSteadyPeriod2013;@storchBioticCrisesPostcrisis1995a;
+@mandaEnvironmentalBioticChanges2006].
+
 
 ```{r}
-#| echo: true
 #| results: hide
 #| warning: false
 #| fig.show: TRUE  
 #| fig-width: 7
 #| fig-height: 10
-#| fig.cap: "Figure 2. The original litholog, induation record and the δ13Ccarb curve.
-#| A.The Litholog of Fryda et al., (2020) B.The induration record extracted from the litholog 
-#| C. The δ13Ccarb record of Fryda et al., (2021)"
+#| fig.cap: "Figure 2. The original litholog, chronostratigraphy, event zonation, induration record and the δ13Ccarb curve. A. The Litholog of Frýda et al. (2020). B. Chronostratigraphic subdivision. C. Event stratigraphic intervals. D. The induration record extracted from the litholog E. The δ13Ccarb record of Frýda et al. (2020)"
 
 # Those data are embedded into WaverideR
 #plot the data
-layout.matrix <- matrix(c(1, 2,3), nrow = 1, ncol = 3)
+
+Ludlow_col <- geo_col(name = "Ludlow")
+Pridoli_col <- geo_col(name = "Pridoli")
+
+layout.matrix <- matrix(c(1, 2,3,4,5), nrow = 1, ncol = 5)
 graphics::layout(mat = layout.matrix,
                  heights = c(1,1,1,1), # Heights of the two rows
-                 widths = c(1,1.5,1,1)) # Widths of the two columns
+                 widths = c(1.5,0.75,0.5,1.5,1,1)) # Widths of the two columns
 
-par(mar = c(4, 2, 2, 2))
+par(mar = c(4, 4, 2, 2))
 
 # Empty plot to define margins and space in the panel
 plot(1, type = "n", axes = FALSE, xlab = "", ylab = "", main="A")
@@ -277,38 +1147,220 @@ usr <- par("usr")  # c(x1, x2, y1, y2)
 
 # Draw the image to fill the entire panel
 rasterImage(img, usr[1], usr[3], usr[2], usr[4])
-par(mar = c(4, 6, 2, 2))
+par(new=TRUE)
 
-plot(induration[,2],induration[,1],type="l",yaxs="i",frame.plot=FALSE,ylab="Position (m)",xlab="induration",ylim=range(induration[,1]), main="B")
+a <- round(c(max(induration[, 1]), min(induration[, 1])),0)
+ylims <- c(min(induration[, 1]),max(induration[,1]))
+
+plot(
+  x = c(0, 1),
+  y = c(min(induration[, 1]), max(induration[, 1])),
+  col = "white",
+  xlab = "",
+  ylab = "Position (m)",
+  xaxt = "n",
+  xaxs = "i",
+  yaxs = "i",
+  yaxt = "n",
+  ylim = ylims,axes=FALSE,
+  main=""
+)    
+
+
+axis(2, at = (seq(a[1],
+                          a[2], by = -1)),
+     labels = (seq(a[1],
+                      a[2], by = -1)))
+
+par(mar = c(4, 4, 2, 0))
+
+plot(
+  x = c(0, 1),
+  y = c(min(induration[, 1]), max(induration[, 1])),
+  col = "white",
+  xlab = "",
+  ylab = "Postion (m)",
+  xaxt = "n",
+  xaxs = "i",
+  yaxs = "i",
+  yaxt= "n",
+  ylim = ylims,
+  main="B"
+)    
+
+axis(2, at = (seq(a[1],
+                          a[2], by = -1)),
+     labels = (seq(a[1],
+                      a[2], by = -1)))
+
+polygon(
+    y = c(
+      my_data[1,2],
+      my_data[1,2],
+      my_data[8,2],
+      my_data[8,2]
+    ),
+    x = c(0, 1, 1, 0),
+    col = Ludlow_col
+  )
+
+    polygon(
+    y = c(
+      my_data[8,2],
+      my_data[8,2],
+      my_data[8,3],
+      my_data[8,3]
+    ),
+    x = c(0, 1, 1, 0),
+    col = Pridoli_col
+  )
+
+    text(
+    labels = "Ludlow",
+    x = 0.5,
+    srt = 270,cex=2,
+    y = (my_data[1,2] +my_data[8,2]) / 2
+  )
+
+    text(
+    labels = "Pridoli",
+    x = 0.5,
+    srt = 270,cex=2,
+    y = (my_data[8,2] + my_data[8,3]) / 2
+  )
+ 
+   
+par(mar = c(4, 0.5, 2, 0.5))
+
+
+plot(
+  x = c(0, 1),
+  y = c(min(induration[, 1]), max(induration[, 1])),
+  col = "white",
+  xlab = "",
+  ylab = "",
+  xaxt = "n",
+  xaxs = "i",
+  yaxs = "i",
+  yaxt = "n",
+  ylim = ylims,
+  main="C"
+)    
+
+polygon(
+    y = c(
+      my_data[4,2],
+      my_data[4,2],
+      my_data[5,2],
+      my_data[5,2]
+    ),
+    x = c(0, 1, 1, 0),
+    col = "lightgrey"
+  )
+    text(
+      labels = "R-zone",cex=1,
+    x = 0.5,
+    srt = 270,
+    y = (my_data[4,2] + my_data[5,2]) / 2
+  )
+
+polygon(
+    y = c(
+      my_data[5,2],
+      my_data[5,2],
+      my_data[6,2],
+      my_data[6,2]
+    ),
+    x = c(0, 1, 1, 0),
+    col = "lightgrey"
+  )
+    text(
+    labels = "S-zone",cex=2,
+    x = 0.5,
+    srt = 270,
+    y = (my_data[6,2] + my_data[5,2]) / 2
+  )
+
+polygon(
+    y = c(
+      my_data[6,2],
+      my_data[6,2],
+      my_data[6,3],
+      my_data[6,3]
+    ),
+    x = c(0, 1, 1, 0),
+    col = "lightgrey"
+  )
+    text(
+    labels = "F-zone",cex=2,
+    x = 0.5,
+    srt = 270,
+    y = (my_data[6,2] + my_data[6,3]) / 2
+  )
+
+plot(induration[,2],induration[,1],type="l",yaxs="i",frame.plot=FALSE,ylab="Position (m)",xlab="induration",ylim=range(induration[,1]), main="D",yaxt="n")
 par(mar = c(4, 1, 2, 2))
 
-plot(kosov_d13Ccarb[,2],kosov_d13Ccarb[,1],type="l",yaxs="i",frame.plot=FALSE,ylab="Position (m)",xlab="δ13Ccarb", main="C",col="green",ylim=range(induration[,1]))
+plot(kosov_d13Ccarb[,2],kosov_d13Ccarb[,1],type="l",yaxs="i",frame.plot=FALSE,ylab="Position (m)",xlab="δ13Ccarb",yaxt="n", main="E",col="green",ylim=range(induration[,1]))
 points(kosov_d13Ccarb[,2],kosov_d13Ccarb[,1],col="darkgreen",pch=19)
+
+polygon(
+  x =
+    c(
+      min(kosov_d13Ccarb[, 2]) - 0.15,
+      max(kosov_d13Ccarb[, 2]) * 1.1,
+      max(kosov_d13Ccarb[, 2]) * 1.1,
+      min(kosov_d13Ccarb[, 2]) - 0.15
+    ),
+  y = c(
+    my_data[6,3],
+    my_data[6,3],
+    my_data[4,2],
+    my_data[4,2]
+  ),
+  col = rgb(0, 0, 0, 0.25)
+)
+
+ text(
+    labels = "Lau  δ13Ccarb excursion",
+    x = 2,
+    srt = 270,
+    y = (my_data[4,2] + my_data[6,3]) / 2
+  )
+ 
+ 
+abline(h=my_data[3,2],col="red",lty=3,lwd=3) 
+
+    text(
+    labels = "Onset \n LKB",
+    x =6,cex=1.25,
+    srt = 0,
+    y = (my_data[3,2])
+  ) 
+
 ```
 
-# 2. Material and Methods
-A cyclostratigraphic analysis will be conducted on the induration record (see SI for the R code). The analyses will leverage the function of the WaverideR (Arts et al., 2025) and astrochron package (Meyers, 2015,2019) to conduct the cyclostratigraphic study
+# 2. Materials and Methods
 
-The cyclostratigraphic analysis starts by applying the Time Optimization (TimeOpt) function of the astrochron R package to the induration record to get a first-order estimate of the sedimentation rate (Meyers, 2015). The TimeOpt function will be rand twice once to evaluate the 405-kyr eccentricity amplitude modulation of the 100-kyr eccentricity band, and the concentration of power at the 100-kyr and 405-kyr eccentricity frequencies and once to evaluate the eccentricity amplitude modulation of the precession band, and the concentration of power at the precession and eccentricity frequencies. The optimal fit of the astronomical cycles will be evaluated for a range of sediment accumulation rates spanning between 0.1 and 2.5 cm/kyr. 
+A cyclostratigraphic analysis will be conducted on the induration record (see SI for the R code). The analyses will leverage the function of the WaverideR (Arts, 2023; Arts et al., 2024) astrochron R packages [@meyersCyclostratigraphyProblemAstrochronologic2019; @meyersEvaluationEccentricityrelatedAmplitude2015] to conduct the cyclostratigraphic study.
 
-The first-order sedimentation rate estimate from the TimeOpt runs is used to extract the 405-kyr eccentricity cycle from the induration record. The extracted cycle is then used to conduct a minimal tuning where the distance between two successive peaks of the extracted cycle is set to the duration of the interpreted astronomical cycle. This duration is subsequently converted into an age model and a sedimentation-rate curve. The sedimentation-rate curve is then used to convert the to convert cm/kyr to the period (m) of different astronomical cycles. These cycles will then be plotted on top of the CWT scalogram to verify whether the curves pass through areas of high spectral power validating the presence of astronomical cycles. If this is the case the period (m) of the 405-kyr eccentricity cycle will be tracked in the CWT. 
+The cyclostratigraphic analysis begins by applying the Time Optimisation (TimeOpt) function of the astrochron R package to the induration record, yielding a first-order estimate of the sedimentation rate [@meyersEvaluationEccentricityrelatedAmplitude2015]. The TimeOpt function will be run twice, once to evaluate the 405-kyr eccentricity amplitude modulation of the 100-kyr eccentricity band, and the concentration of power at the 100-kyr and 405-kyr eccentricity frequencies, and once to evaluate the eccentricity amplitude modulation of the precession band, and the concentration of power at the precession and eccentricity frequencies. The optimal fit of the astronomical cycles will be evaluated for a range of sediment accumulation rates spanning between 0.1 and 4 cm/kyr.
 
-The tracked period (m) curve of the 405-kyr eccentricity cycle can then be used to create a astrochronology with
-an assigned uncertainty based on the analytical uncertainty of the Wavelet (Arts et al., 2024). The age-model with uncertainty can then be used to assign durations (with uncertainty) to the different intervals in the 
-Kosov quarry section.
+The first-order sedimentation rate estimate from the TimeOpt runs is used to extract the 405-kyr eccentricity cycle from the induration record. The extracted cycle is then used to conduct a minimal tuning, where the distance between two successive peaks of the extracted cycle is set to the duration of the interpreted astronomical cycle. This duration is subsequently converted into an age model and a sedimentation-rate curve. The sedimentation-rate curve is then used to convert cm/kyr to the period (m) of different astronomical cycles. These cycles will then be plotted on top of the CWT scalogram to verify whether the curves pass through areas of high spectral power, validating the presence of astronomical cycles. If this is the case, the period (m) of the 405-kyr eccentricity cycle will be tracked in the CWT.
 
-The mean age model is then used to convert the induration and δ13Ccarb record to the time domain. Allowing for the study of the imprint of astronomical cycles in induration record in the time domain. Special attention will be paid to the phase relationship between the 100-kyr eccentricity cycle directly extracted from the record and the 100-kyr eccentricity cycle extracted from the Hilbert transform of the precession cycle and the phase relationship between the 405-kyr eccentricity cycle directly extracted from the record and the 
-405-kyr eccentricity cycle extracted from the Hilbert transform of the 100-kyr eccentricity cycle. The phase relationship between these cycles will allow us to infer the phase relationship between cycles extracted from the proxy record and those the true phase of the astronomical cycle, as well as its relationship with changes in insolation (Hinnov, 2000; Laskar et al., 2004).
+The tracked period (m) curve of the 405-kyr eccentricity cycle can then be used to create a floating astrochronology with an assigned uncertainty based on the analytical uncertainty of the Wavelet [@artsAgeOrbitalForcing2024]. This floating age model with uncertainty is then anchored to the astrochronologically calibrated age of the Ludlow-Pridoli boundary (423.03 ±0.53 Ma) [@artsAgeOrbitalForcing2024]. The anchored numerical age model can then be used to assign ages and durations (with uncertainty) to the record of the Kosov quarry section and its subsections.
 
-The rate of change (‰/kyr) will be calculated from the δ13Ccarb record converted to the time domain. Which again will be investigated for the imprint of astronomical cycles. A lag-1 curve generated based on the lag-1 autocorrelation coefficient using a windowed analysis Monte-Carlo on the induration record in the time domain. This record will function as a proxy record for the sea-level curve (Li et al., 2018). The imprint of astronomical cycles in the lag-1 will be investigated and compared to the imprint of astronomical cycles in the induration record.
+The mean age model is then used to convert the induration and δ13Ccarb record to the time domain. Allowing for the study of the imprint of astronomical cycles in the induration record in the time domain. Special attention will be paid to the phase relationship between the 100-kyr eccentricity cycle directly extracted from the record and the 100-kyr eccentricity cycle extracted from the Hilbert transform of the precession cycle, and the phase relationship between the 405-kyr eccentricity cycle directly extracted from the record and the 405-kyr eccentricity cycle extracted from the Hilbert transform of the 100-kyr eccentricity cycle. The phase relationship between these cycles will allow us to infer the phase relationship between cycles extracted from the proxy record and those the true phase of the astronomical cycle, as well as its relationship with changes in insolation [@hinnovNewPerspectivesOrbitally2000; @laskarLongtermNumericalSolution2004].
 
-# 3. Results 
-## 3.1. TimeOpt derived sedimentation rates 
-The TimeOpt function was run twice once to optimize the 405-kyr eccentricity amplitude modulation of the 100-kyr eccentricity band, and the concentration of power at the 100-kyr and 405-kyr eccentricity frequencies and one  to optimize the eccentricity amplitude modulation of the precession band, and the concentration of power at the precession and eccentricity frequencies. The TimeOpt results indicate that the The optimal sedimentation rate is around 1.6 cm/ka with the peak spanning sedimentation rates between 1.2 and 2.2 cm/ka (see Figure 3.)
+The rate of change (‰/kyr) will be calculated from the δ13Ccarb record, which has been converted to the time domain. Which again will be investigated for the imprint of astronomical cycles. A lag-1 curve was generated based on the lag-1 autocorrelation coefficient using a windowed analysis Monte-Carlo on the induration record in the time domain. This record will function as a proxy record for the sea-level curve [@liSedimentaryNoiseSea2018]. The imprint of astronomical cycles in the lag-1 record will be investigated and compared to the imprint of astronomical cycles in the induration recordd.
 
+# 3. Results
+
+## 3.1. TimeOpt-derived sedimentation rates
+
+The TimeOpt function was run twice, once to optimise the 405-kyr eccentricity amplitude modulation of the 100-kyr eccentricity band, and the concentration of power at the 100-kyr and 405-kyr eccentricity frequencies and once to optimise the eccentricity amplitude modulation of the precession band, and the concentration of power at the precession and eccentricity frequencies. The TimeOpt results indicate that the optimal sedimentation rate is around 3 cm/ka, with the peak spanning sedimentation rates between 2 and 4 cm/ka (see Figure 3).
 
 ```{r}
-#| echo: true
 #| results: hide
 #| warning: false
 #| fig.show: TRUE   
@@ -320,7 +1372,7 @@ targetP=c(21,17)
 
 res1=timeOpt(dat = induration,
     sedmin = 0.1,
-    sedmax = 2.5,
+    sedmax = 4,
     numsed = 500,
     fit = 2,
     fitModPwr = TRUE,
@@ -329,7 +1381,7 @@ res1=timeOpt(dat = induration,
 
 res2 <- timeOpt(dat = induration,
     sedmin = 0.1,
-    sedmax = 2.5,
+    sedmax = 4,
     numsed = 500,
     fit = 2,
     fitModPwr = TRUE,
@@ -339,7 +1391,7 @@ res2 <- timeOpt(dat = induration,
 
 res3=timeOpt(dat = induration,
     sedmin = 0.1,
-    sedmax = 2.5,
+    sedmax = 4,
     numsed = 500,
     fit = 1,
     fitModPwr = TRUE,
@@ -348,7 +1400,7 @@ res3=timeOpt(dat = induration,
 
 res4 <- timeOpt(dat = induration,
     sedmin = 0.1,
-    sedmax = 2.5,
+    sedmax = 4,
     numsed = 500,
     fit = 1,
     fitModPwr = TRUE,
@@ -361,17 +1413,14 @@ res4 <- timeOpt(dat = induration,
 
 ```
 
-
-```{r}
-#| echo: true
-#| results: hide
+```{r timeopt res}
 #| warning: false
 #| fig.show: TRUE   
 #| fig-width: 10
 #| fig-height: 14
-#| fig.cap: "Figure 3. TimeOpt results. A. Fit: r²[envelope] (red) and r²[power] (gray) for TimeOpt run 405 vs 100-kyr ecc. B. Optimal Fit: r²[opt] for TimeOpt run 405 vs 100-kyr ecc. C. Envelope (red); Reconstructed Ecc. Model (black) for TimeOpt run 405 vs 100-kyr ecc. D. Envelope (red); Filtered Data (blue) for TimeOpt run 405 vs 100-kyr ecc. E. Fit: r²[envelope] (red) and r²[power] (gray) for TimeOpt run 100-kyr ecc. vs precession. F. Optimal Fit: r²[opt] for TimeOpt run 100-kyr ecc. vs precession. G. Envelope (red); Reconstructed Ecc. Model (black) for TimeOpt run 100-kyr ecc. vs precession. H. Envelope (red); Filtered Data (blue) for TimeOpt run 100-kyr ecc. vs precession."
+#| fig.cap: "Figure 3. TimeOpt results. A. Fit: r²[envelope] (red) and r²[power] (grey) for TimeOpt run 405 vs 100-kyr ecc. B. Optimal Fit: r²[opt] for TimeOpt run 405 vs 100-kyr ecc. C. Envelope (red); Reconstructed Ecc. Model (black) for TimeOpt run 405 vs 100-kyr ecc. D. Envelope (red); Filtered Data (blue) for TimeOpt run 405 vs 100-kyr ecc. E. Fit: r²[envelope] (red) and r²[power] (grey) for TimeOpt run 100-kyr eccentricity versus precession. F. Optimal Fit: r²[opt] for TimeOpt run 100-kyr eccentricity versus precession. G. Envelope (red); Reconstructed Ecc. Model (black) for TimeOpt run 100-kyr ecc. versus precession. H. Envelope (red); Filtered Data (blue) for TimeOpt run 100-kyr eccentricity versus precession."
 
-{
+
 layout(matrix(c(1, 2, 3, 4,5,6,7,8), nrow = 4, ncol = 2, byrow = TRUE))  
 par(mar = c(4, 4, 3, 3))
 
@@ -488,49 +1537,39 @@ mtext("Std. Value", side = 2, line = 2, cex = 0.9)
 mtext("Time (ka)", side = 1, line = 2.3, cex = 0.8)
 usr <- par("usr")
 text(usr[1], usr[4] - 0.05*(usr[4]-usr[3]), "H", pos = 4, font = 2, cex = 1.5)
-}
 
-  
 ```
 
 ## 3.2 Extract the 405-kyr cycle and generate a sedimentation-rate curve
-Based on the TimeOpt results, the 405-kyr eccentricity cycle is extracted from the induration record using a Taner bandpass filter which spans from 4.86 to 8.91 corresponding to the peak of the optimal sedimentation rate range (1.2–2.2 cm/ka) based on the TimeOpt analysis results. Next, A sedimentation-rate curve is constructed using the minimal tuning technique, in which the distance between two successive peaks of the extracted cycle is set to the duration of the interpreted astronomical cycle, this duration is subsequently used to generate the sedimentation-rate curve (see Figure 4). 
+
+Based on the TimeOpt results, the 405-kyr eccentricity cycle is extracted from the induration record using a Taner bandpass filter, which spans from 4.86 to 16.2, corresponding to the peak of the optimal sedimentation rate range (1.2-4 cm/ka) as determined by the TimeOpt analysis results. Next, a sedimentation-rate curve is constructed using the minimal tuning technique, in which the distance between two successive peaks of the extracted cycle is set to the duration of the interpreted astronomical cycle. This duration is subsequently used to generate the sedimentation-rate curve (see Figure 4).
 
 ```{r}
-#| echo: true
 #| results: hide
 #| warning: false
 #| fig.show: TRUE
 #| fig-width: 7
 #| fig-height: 4
-#| fig.cap: "Figure 4. Minimal tuning. 
-#| A. Induration record and the extracted 405-kyr eccentricity cycle. 
-#| B. Sedimentation rate and sedimentation rate (cm/kyr) based on the minimal tuning." 
-#C. Position (m) vs Floating time (kyr).
-#D. Extracted 405-kyr eccentricity cycle in the (floating) time domain."
+#| fig.cap: "Figure 4. Minimal tuning. A. Induration record and the extracted 405-kyr eccentricity cycle. B. Sedimentation rate and sedimentation rate (cm/kyr) based on the minimal tuning." 
 
 induration_filt <-
   taner(
     induration,
-    fhigh = 1 / (2.2 * 4.05),
-    flow = 1 /  (1.2 * 4.05),
+    fhigh = 1 / (4.5 * 4.05 ),
+    flow = 1 /  (1.2 * 4.05 ),
     roll = 10 ^ 5,
-    xmax = 1,
-    genplot = FALSE
+    xmax = 1,genplot=FALSE,verbose = FALSE
   )
-
 
 induration_filt_min_tun <- minimal_tuning(
   data = induration_filt,
-  pts = 10,
+  pts = 5,
   cycle = 405,
   tune_opt = "minmax",
   output = 0,
   genplot = FALSE,
   keep_editable = FALSE
 )
-
-
 
 
 layout.matrix <- matrix(c(1, 2), nrow = 2, ncol = 1)
@@ -578,54 +1617,13 @@ text(
   cex = 1.5
 )
 
-
-# plot(
-#   induration_filt_min_tun[, 1],
-#   induration_filt_min_tun[, 4],
-#   type = "l",
-#   xlab = "Position (m)",
-#   ylab = "Floating time (kyr)",
-#   main = "Position (m) vs Floating time (kyr)"
-# )
-# usr <- par("usr")
-# 
-# text(
-#   usr[1],
-#   usr[4] - 0.2 * (usr[4] - usr[3]),
-#   "C",
-#   pos = 4,
-#   font = 2,
-#   cex = 1.5
-# )
-# plot(
-#   induration_filt_min_tun[, 4],
-#   induration_filt_min_tun[, 2],
-#   type = "l",
-#   xlab = "Floating time (kyr)",
-#   ylab = "proxy",
-#   main = "405-kyr ecc. cycle time domain"
-# )
-# usr <- par("usr")
-# text(
-#   usr[1],
-#   usr[4] - 0.2 * (usr[4] - usr[3]),
-#   "D",
-#   pos = 4,
-#   font = 2,
-#   cex = 1.5
-# )
-  
-
 ```
 
 ## 3.3 Tracking the period (m) of the 405-kyr eccentricity cycle in the the CWT scalogram
 
-The sedimentation rate curve attained from the minimal tuning was then used to convert cm/kyr to period (m) of different astronomical cycles. These cycles were then  plotted on top of the CWT scalogram (see figure 4).
-We can see that the curves plot through areas of high spectral power corresponding to astronomical cycles that should be present according to the TimeOpt derived sedimentation rate modelling runs. Next the period (m) of the 405-kyr eccentricity cycle was tracked in the CWT. 
-
+The sedimentation rate curve attained from the minimal tuning was then used to convert cm/kyr to period (m) of different astronomical cycles. These cycles were then plotted on top of the CWT scalogram (see figure 4). We can see that the curves plot through areas of high spectral power corresponding to astronomical cycles that should be present according to the TimeOpt-derived sedimentation rate modelling runs. Next, the period (m) of the 405-kyr eccentricity cycle was tracked in the CWT.
 
 ```{r}
-#| echo: true
 #| results: hide
 #| warning: false
 #| fig.show: TRUE
@@ -636,40 +1634,56 @@ induration_wt <- analyze_wavelet(
   lowerPeriod = 0.05,
   upperPeriod = 35,
   verbose = FALSE,
-  omega_nr = 10,
+  omega_nr = 6,
   pval = FALSE,
   n_simulations = 10,
   run_multicore = FALSE
 )
 
-
 ```
 
-::: {.callout-caution collapse="false"}
-❗ This  code  must be run manually in an interactive R session
-It requires selecting points interactively
+
+```{r, results='asis', echo=FALSE}
+# Only show this callout in HTML
+if (knitr::is_html_output()) {
+  cat(
+'::: {.callout-caution collapse="true"}
+ This code must be run manually in an interactive R session. It requires selecting points interactively
 
 induration_track <- track_period_wavelet(induration_wt)
 
-induration_track_comp <- completed_series(tracked_curve =induration_track,
-                                           wavelet = induration_wt)
-induration_track_comp <- noLow(induration_track[,c(1,2)],output = 2,smooth=0.1)
-write.csv(induration_track_comp,"induration_track_comp.csv")
-:::
+induration_track_comp <- completed_series(
+  tracked_curve = induration_track,
+  wavelet = induration_wt
+)
+
+induration_track_comp <- noLow(
+  induration_track[, c(1,2)],
+  output = 2,
+  smooth = 0.1
+)
+
+write.csv(induration_track_comp, "induration_track_comp.csv")
+:::'
+  , sep = "\n")
+}
+```
 
 
 ```{r}
-#| echo: true
 #| results: hide
 #| warning: false
 #| fig.show: TRUE 
-#| fig.cap: "Figure 5. The Continous Wavelet Transform (CWT) of he induration record extracted from the litholog
-#| of Fryda et al., (2020) and the period (m) of astronomical cycles based on the sedimentation rates attaied from the minimal tuning and the tracked period (m) the 405-kyr eccentricity cycle. Black dotted = tracked period (m) the 405-kyr eccentricity cycle Red = the 405-kyr eccentricity cycle (minimal tuning based) Purple = the 100-kyr eccentricity cycle (minimal tuning based)  Blue = the obliquity cycle (minimal tuning based)  Darkgreen = the precession cycle (minimal tuning based) "
+#| fig-width: 10
+#| fig-height: 6
+#| fig.cap: "Figure 5. The Continuous Wavelet Transform (CWT) of the induration record extracted from the litholog of Frýda et al. (2020) and the period (m) of astronomical cycles based on the sedimentation rates attained from the minimal tuning and the tracked period (m) of the 405-kyr eccentricity cycle. Black dotted = tracked period (m) the 405-kyr eccentricity cycle Red = the 405-kyr eccentricity cycle (minimal tuning based) Purple = the 100-kyr eccentricity cycle (minimal tuning based) Blue = the obliquity cycle (minimal tuning based) Dark green = the precession cycle (minimal tuning based)"
 
 # Load the tracked period curve 
 induration_track_comp <- read.csv(
   "https://raw.githubusercontent.com/stratigraphy/Kosov-cyclostrat/main/induration_track_comp.csv"
 )
+#induration_track_comp <- read.csv("induration_track_comp.csv")
+
 
 induration_track_comp <- induration_track_comp[,c(2,3)]
 
@@ -679,30 +1693,32 @@ plot_wavelet(induration_wt,add_avg = TRUE,keep_editable = TRUE,
   x_lab = "Position (metres)")
 
 lines(induration_filt_min_tun[,1],
-      log2(induration_filt_min_tun[,3]*4.05),col="red",lwd=2)
-
-lines(induration_filt_min_tun[,1],
-      log2(induration_filt_min_tun[,3]*1.1),col="purple",lwd=2)
-
-lines(induration_filt_min_tun[,1],
-      log2(induration_filt_min_tun[,3]*0.30),col="blue",lwd=2)
-
-lines(induration_filt_min_tun[,1],
-      log2(induration_filt_min_tun[,3]*0.19),col="darkgreen",lwd=2)
+      log2(induration_filt_min_tun[,3]*4.05),
+      col=adjustcolor("red", alpha.f=1), lwd=2)
 
 lines(induration_track_comp[,1],
-      log2(induration_track_comp[,2]),col="black",lwd=2.5,lty="2262")
+      log2(induration_track_comp[,2]/4.05*1.1),
+      col=adjustcolor("purple", alpha.f=0.5), lwd=10, lty=1)
+
+lines(induration_track_comp[,1],
+      log2(induration_track_comp[,2]/4.05*0.30),
+      col=adjustcolor("blue", alpha.f=0.5), lwd=10, lty=1)
+
+lines(induration_track_comp[,1],
+      log2(induration_track_comp[,2]/4.05*0.19),
+      col=adjustcolor("darkgreen", alpha.f=0.5), lwd=10, lty=1)
+
+lines(induration_track_comp[,1],
+      log2(induration_track_comp[,2]),
+      col=adjustcolor("black", alpha.f=0.5), lwd=10, lty=1)
 
 ```
 
-## 3.4 Convert and apply the tracked period curve as the astrochronoloy
+## 3.4 Combine the tracked period (m) and a tie-point curve to create an anchored astrochronoloy
 
-The tracked period (m) curve of the 405-kyr eccentricity cycle is used to create an age-depth model
-and to convert the proxy records from the depth (m) to the time domain. The analytical uncertainty of the 
-wavelet is used to assign an uncertainty to the age-model (Arts et al., 2024)
+The tracked period (m) curve of the 405-kyr eccentricity cycle was then be used to create a floating astrochronology with an assigned uncertainty based on the analytical uncertainty of the Wavelet [@artsAgeOrbitalForcing2024]. This floating age model with uncertainty was then anchored to the astrochronologically calibrated age of the Ludlow-Pridoli boundary (423.03 ±0.53 Ma) [@artsAgeOrbitalForcing2024]. This anchored numerical age model could then be used to assign ages and durations (with uncertainty) to the record of the Kosov quarry section and its subsections
 
 ```{r}
-#| echo: true
 #| results: hide
 #| warning: false
 #| fig.show: TRUE  
@@ -722,124 +1738,160 @@ induration_track_comp_unc <- wavelet_uncertainty(
 
 induration_track_comp_unc_sel <- induration_track_comp_unc[,c(1,3,5)]
 
+proxy_list <- list(induration)
+id <- c("age_prid_bound")
+ages <- c(423030)
+ageSds <- c(530/2)
+ages_unc_dist <- c("n")
+position <- c(22.0)
+anchor_thick <- c(0.1)
+anchor_thick_unc_dist <- c("u")
+bound_age <-
+ as.data.frame(
+   cbind(
+     id,
+     ages,
+     ageSds,
+     ages_unc_dist,
+     position,
+     anchor_thick,
+     anchor_thick_unc_dist
+   )
+ )
 
-induration_track_comp_unc_time <- curve2time_unc(
-  tracked_cycle_curve = induration_track_comp_unc_sel,
-  tracked_cycle_period = 405,
-  tracked_cycle_period_unc = 6,
-  tracked_cycle_period_unc_dist = "n",
-  n_simulations = 10000,
-  output = 1
-)
+gap_dur = c(NULL)
+gap_unc = c(NULL)
+gap_depth = c(NULL)
+gap_unc_dist = c(NULL)
+
+gap_constraints_none <-
+ as.data.frame(cbind(gap_dur, gap_unc, gap_depth, gap_unc_dist))
+
+cycles_checks <- c(405,110,33,19)
+uncer_cycles_checks <- c(20.25,35,7,6)
 
 
-induration_time <- curve2tune(
-  data = induration,
-  tracked_cycle_curve = induration_track_comp,
-  tracked_cycle_period = 405,
-  genplot = FALSE,
-  keep_editable = FALSE
-)
+# curve2time_unc_anchor_res <-
+#   curve2time_unc_anchor(
+#  age_constraint = bound_age ,
+#  tracked_cycle_curve = induration_track_comp_unc_sel,
+#  tracked_cycle_period = 405 ,
+#  tracked_cycle_period_unc = 6,
+#  tracked_cycle_period_unc_dist = "n" ,
+#  n_simulations = 10000,
+#  gap_constraints = NULL,
+#  proxy_data = proxy_list,
+#  cycles_check = cycles_checks,
+#  uncer_cycles_check = uncer_cycles_checks ,
+#  max_runs = 10000 ,
+#  run_multicore = TRUE,
+#  verbose = TRUE ,
+#  genplot = FALSE,
+#  keep_nr = 2,
+#  keep_all_time_curves = FALSE,
+#  dj = 1 / 50 ,
+#  lowerPeriod = 10 ,
+#  upperPeriod = 800 ,
+#  omega_nr = 10,
+#  seed_nr = 1337,
+#  dir = FALSE)
+# saveRDS(curve2time_unc_anchor_res, file = "D:/Phd/documents/kosov/curve2time_unc_anchor_res.rds")
 
-kosov_d13Ccarb_time <- curve2tune(
-  data = kosov_d13Ccarb,
-  tracked_cycle_curve = induration_track_comp,
-  tracked_cycle_period = 405,
-  genplot = FALSE,
-  keep_editable = FALSE
-)
+```
+
+```{r, results='asis', echo=FALSE}
+# Only show this callout in HTML
+if (knitr::is_html_output()) {
+  cat(
+'::: {.callout-caution collapse="true"}
+This code takes a long time to run 
+
+proxy_list <- list(induration) id <- c("age_prid_bound") ages <- c(423030) ageSds <- c(530/2) ages_unc_dist <- c("n") position <- c(22.0) anchor_thick <- c(0.1) anchor_thick_unc_dist <- c("u") bound_age <- as.data.frame( cbind( id, ages, ageSds, ages_unc_dist, position, anchor_thick, anchor_thick_unc_dist ) )
+
+gap_dur = c(NULL) gap_unc = c(NULL) gap_depth = c(NULL) gap_unc_dist = c(NULL)
+
+gap_constraints_none <- as.data.frame(cbind(gap_dur, gap_unc, gap_depth, gap_unc_dist))
+
+cycles_checks <- c(405,110,33,19) uncer_cycles_checks <- c(40.5,30,5,5)
+
+curve2time_unc_anchor_res <- curve2time_unc_anchor( age_constraint = bound_age , tracked_cycle_curve = induration_track_comp_unc_sel, tracked_cycle_period = 405 , tracked_cycle_period_unc = 6, tracked_cycle_period_unc_dist = "n" , n_simulations = 10000, gap_constraints = NULL, proxy_data = proxy_list, cycles_check = cycles_checks, uncer_cycles_check = uncer_cycles_checks , max_runs = 1000 , run_multicore = TRUE, verbose = TRUE , genplot = FALSE, keep_nr = 2, keep_all_time_curves = FALSE, dj = 1 / 100 , lowerPeriod = 10 , upperPeriod = 800 , omega_nr = 10, seed_nr = 1337, dir = FALSE) saveRDS(curve2time_unc_anchor_res, file = "curve2time_unc_anchor_res.rds")
+:::'
+  , sep = "\n")
+}
+```
 
 
-kosov_d13Corg_time <- curve2tune(
-  data = kosov_d13Corg,
-  tracked_cycle_curve = induration_track_comp,
-  tracked_cycle_period = 405,
-  genplot = FALSE,
-  keep_editable = FALSE
-)
+```{r}
+#| results: hide
+#| warning: false
+#| fig.show: TRUE  
 
-kosov_big13C_time<- curve2tune(
-  data = kosov_big13C,
-  tracked_cycle_curve = induration_track_comp,
-  tracked_cycle_period = 405,
-  genplot = FALSE,
-  keep_editable = FALSE
-)
+curve2time_unc_anchor_res <- readRDS(file = "D:/Phd/documents/kosov/curve2time_unc_anchor_res.rds")
 
-kosov_time<- cbind(induration_track_comp_unc_sel[,1],rowMeans(induration_track_comp_unc_time))
-kosov_sd<- rowSds(induration_track_comp_unc_time)
+results <- as.data.frame(curve2time_unc_anchor_res[[2]])
+
+kosov_time<- cbind(curve2time_unc_anchor_res[[1]],rowMeans(results))
+kosov_sd<- rowSds(as.matrix(results))
+
+induration_time<- tune(induration,kosov_time,extrapolate=F,genplot=F,check=T,verbose=T)
+kosov_d13Ccarb_time<- tune(kosov_d13Ccarb,kosov_time,extrapolate=F,genplot=F,check=T,verbose=T)
+kosov_d13Corg_time<- tune(kosov_d13Corg,kosov_time,extrapolate=F,genplot=F,check=T,verbose=T)
 
 d13C_tuned <- kosov_d13Ccarb_time
 d13C_tuned <- linterp(d13C_tuned,1,genplot=FALSE)
 d13C_tuned_2 <- d13C_tuned
 d13C_tuned <- noLow(d13C_tuned[,c(1,2)],smooth=0.05,2,genplot=FALSE)
 diff_d13C <- diff(d13C_tuned[,2])
-diff_d13C <- diff(d13C_tuned[,2])
-d13C_tuned[,3] <- c(diff_d13C[1],diff_d13C)
+d13C_tuned[,3] <- c(-1*diff_d13C[1],-1*diff_d13C)
 ```
 
 ```{r}
-#| echo: true
-#| results: hide
 #| warning: false
 #| fig.show: TRUE
-#| fig.cap: "Figure 6. Astrochronological age-model.The black line is the mean age-depth curve, and the red and blue lines are time plus and minus two standard deviations (2σ) "
+#| fig.cap: "Figure 6. Astrochronological numerival age- depth model.The black line is the mean age-depth curve, and the red and blue lines are time plus and minus two standard deviations (2σ) "
 
-plot(kosov_time[,1],kosov_time[,2],xlab="postion (m)",ylab="time floating (kyr)",type="l",ylim=c(0,max(kosov_time[,2]+2*kosov_sd)))
-lines(kosov_time[,1],kosov_time[,2]+2*kosov_sd,col="blue")
-lines(kosov_time[,1],kosov_time[,2]-2*kosov_sd,col="red")
+plot(kosov_time[,1],kosov_time[,2]/1000,xlab="postion (m)",ylab="Time (Ma)",type="l",ylim=rev(c(min(kosov_time[,2]-2*kosov_sd)/1000,max(kosov_time[,2]+2*kosov_sd)/1000)))
+lines(kosov_time[,1],(kosov_time[,2]+2*kosov_sd)/1000,col="blue")
+lines(kosov_time[,1],(kosov_time[,2]-2*kosov_sd)/1000,,col="red")
+abline(v=my_data[8,2],lty=3,col="red",lwd=3)
 
 ```
 
-## 3.5 Get durations for intervals including uncertainty
+## 3.5 Ages and durations for intervals including uncertainty
 
-"The age model provides durations with uncertainty for the chrono-, litho-, and event-stratigraphic intervals previously identified in the succession (refs). To reflect the resolution of the boundaries and the inherent precision related uncertainties in the age model, the calculated durations and uncertainties are rounded to the nearest 10 kyr
+The age model provides durations with uncertainty for the chrono, litho-, and event-stratigraphic intervals previously identified in the succession [@frydaLonglastingSteadyPeriod2013; @frydaMidLudfordianLateSilurian2021]. The calculated ages, durations, and their associated uncertainties were rounded to the nearest 10 kyr to align with the precision of the anchor point.
 
 ```{r}
-#| results: asis
 #| warning: false
-#| fig.cap: "Table 1. Durations based on the astrochronological age-model "
 
-
-my_data <- data.frame(
-  Interval = c("Entire record",
-               "Lau biogeochemical Event", 
-               "LKB Event (trace metal peak)",
-               "R-zone", 
-               "S-Zone", 
-               "F-Zone",
-               "Ludlow part section",
-               "Pridoli part section"),
-  position_bottom =c(min(kosov_time[,1]),
-               -0.4, 
-               -0.4,
-               0, 
-               1.4, 
-               11.6,
-               0,
-               22),
-  position_top=c(max(kosov_time[,1]),
-               20, 
-               0,
-               1.4, 
-               11.6, 
-               20,
-               22,
-               max(kosov_time[,1])))
-
-my_data$duration <- NA
-my_data$uncertainty <- NA
+kosov_time<- cbind(curve2time_unc_anchor_res[[1]],rowMeans(results))
+kosov_sd<- rowSds(as.matrix(results))
 
 
 for(i in 1:nrow(my_data)){
+
 row_nr_1 <- DescTools::Closest(kosov_time[,1],my_data[i,2],which = TRUE)
 row_nr_2 <- DescTools::Closest(kosov_time[,1],my_data[i,3],which = TRUE)
 
-my_data[i,4] <- round(mean(induration_track_comp_unc_time[row_nr_2,]-induration_track_comp_unc_time[row_nr_1,])/10,0)*10
-my_data[i,5] <- round(2*sd(induration_track_comp_unc_time[row_nr_2,]-induration_track_comp_unc_time[row_nr_1,])/10,0)*10
+my_data[i,4] <- round(mean(as.matrix(results[row_nr_1,]),na.rm = TRUE)/10,0)/100
+
+my_data[i,5] <- round(2*sd(as.matrix(results[row_nr_1,]),na.rm = TRUE)/10,0)*10
+
+my_data[i,6]<- round(mean(as.matrix(results[row_nr_2,]),na.rm = TRUE)/10,0)/100
+
+my_data[i,7] <- round(2*sd(as.matrix(results[row_nr_2,]),na.rm = TRUE)/10,0)*10
+
+my_data[i,8] <- round(mean(as.matrix(na.omit(results[row_nr_1,]-results[row_nr_2,])))/10,0)*10
+
+my_data[i,9] <- round(2*sd(results[row_nr_2,]-results[row_nr_1,],na.rm = TRUE)/10,0)*10
 
 }
 
+for(i in 1:nrow(my_data)){
+  for( j in 4:ncol(my_data)){
+    if (my_data[i,j]<=10){
+    my_data[i,j] <- 10
+  }}}
 
 bottom_record <-  kosov_time[DescTools::Closest(kosov_time[,1],my_data[1,2],which=TRUE),2]
 base_pridoli <-  kosov_time[DescTools::Closest(kosov_time[,1],my_data[8,2],which=TRUE),2]
@@ -850,28 +1902,29 @@ base_F_zone<-  kosov_time[DescTools::Closest(kosov_time[,1],my_data[6,2],which=T
 Top_F_zone<-  kosov_time[DescTools::Closest(kosov_time[,1],my_data[6,3],which=TRUE),2]
 base_event <-  kosov_time[DescTools::Closest(kosov_time[,1],my_data[2,2],which=TRUE),2]
 
-
-
 # Create gt table with header and custom column label (no pipe)
 tab <- gt(my_data)
 tab <- cols_label(tab,
                   position_bottom = "position (m) bottom",
                   position_top    = "position (m) top",
+                  age_bottom	 = "Age bottom (Ma)",
+                  uncertainty_age_bottom="uncertainty bottom (kyr) +/-2sd ",
+                  age_top = "Age top (Ma)",
+                  uncertainty_age_top= "uncertainty top (kyr) +/-2sd ",
                   duration        = "duration (kyr)",
-                  uncertainty     = "uncertainty (kyr) +/-2sd ")
-tab <- tab_header(tab, title = "Duration intervals Kosov quarry")
+                  uncertainty     = "uncertainty in duration (kyr) +/-2sd ")
+tab <- tab_header(tab, title = "Table 1. Ages and durations based on the anchored astrochronological age model")
 
 tab
+
  
 ```
 
-                 
 ## 3.6 Extract and plot the record and the astronomical cycles in the time domain
-The age model was used to convert the induration and  numerical ages for the δ13Ccarb record to the (floating) time domain. Next the CWT was performed on the tuning induration record. Peaks corresponding to the 9-kyr half precession, 17-kyr precession,21-kyr precession, 30-kyr obliquity,55-kyr eccentricity?, 96-kyr eccentricity,125-kyr eccentricity, 220-kyr eccentricity, 405-kyr eccentricity and the 1-Myr eccentricity cycle can be observed in the CWT scalogram. The precession, obliquity, 100-kyr eccentricity and 405-kyr eccentricity were also extracted from the record. The Hilbert transform was applied to the The precession, obliquity and 100-kyr eccentricity cycles. The 405-kyr eccentricity cycle was also extracted from the Hilbert transform derived amplitude record of the 100-kyr eccentricity and compared to the 405-kyr eccentricity directly extracted from the record showing an anti-phased relationship. 
 
+The age model was used to convert the induration and δ13Ccarb record to the (numerical) time domain. Next, the CWT was performed on the tuning induration record. Peaks corresponding to the 8.5-kyr half precession, ~16-kyr precession, 28-kyr bliquity,50-kyr eccentricity, 100-kyr eccentricity, 200-kyr eccentricity, 405-kyr eccentricity and the 1.6-Myr eccentricity cycle can be observed in the CWT scalogram. The precession, obliquity, 100-kyr eccentricity and 405-kyr eccentricity were also extracted from the record. The Hilbert transform was applied to the precession, obliquity and 100-kyr eccentricity cycles. The 405-kyr eccentricity cycle was also extracted from the Hilbert transform-derived amplitude record of the 100-kyr eccentricity and compared to the 405-kyr eccentricity directly extracted from the record, showing an anti-phased relationship.
 
 ```{r}
-#| echo: true
 #| results: hide
 #| warning: false
 #| fig.show: FALSE     
@@ -879,8 +1932,7 @@ The age model was used to convert the induration and  numerical ages for the δ1
 induration_time <- linterp(induration_time,genplot=FALSE)
 induration_time_wt <- analyze_wavelet(data = induration_time,
                                       dj=1/200,upperPeriod = 2400,
-                                      lowerPeriod = 5,omega_nr = 10)
-    
+                                      lowerPeriod = 5,omega_nr = 6)
 induration_filt_time_405 <-
   taner(
     induration_time,
@@ -951,32 +2003,15 @@ induration_filt_time_prec_hilb_110 <-
     xmax = 1/75,genplot=FALSE
   )
 
-
 ```
 
 ```{r}
-#| echo: true
 #| results: hide
 #| warning: false
 #| fig.show: TRUE 
 #| fig-width: 14
 #| fig-height: 14
-#| fig.cap: "Figure 7. Induration proxy record in the time domain including the wavelet scalogram of the induration record and astronomical cycles extracted from said record.
-#| A Stages.
-#| B.Event zone subdivision
-#| C.The δ13Ccarb record. 
-#| D.The Induration record
-#| E.Wavelet scalogram of induration record with the average spectral power on top. The black
-#| vertical lines in the wavelet scalograms are durations of known astronomical cycles. From left to right,
-#| these cycles are the,9-kyr half precession, 17-kyr precession,21-kyr precession, 30-kyr
-#| obliquity,55-kyr eccentricity?, 96-kyr eccentricity,125-kyr eccentricity, 220-kyr eccentricity, 405-kyr eccentricity and the 1-Myr eccentricity cycle. 
-#| F.The black line is a 405-kyr eccentricity cycle extracted from the Induration record. The red line is the 405-kyr eccentricity cycle extracted from the Hilbert transform of the 100-kyr eccentricity cycle of the Induration record. 
-#| G.The 100-kyr eccentricity cycle was extracted from the Induration record (black line) and the Hilbert
-#| transform of the 100-kyr eccentricity cycle (red line).
-#| H.) Obliquity cycle extracted from the Induration record (black line), and the Hilbert transform of the
-#| obliquity cycle (red line).
-#| I. The precession cycle extracted from the Induration record (black line) and the Hilbert
-#| transform of the precession cycle (red line). "
+#| fig.cap: "Figure 7. Induration proxy record in the time domain, including the wavelet scalogram of the induration record and astronomical cycles extracted from said record. A Stages. B. Event zone subdivision C. The δ13Ccarb record. D. The Induration record. E. Wavelet scalogram of the induration record with the average spectral power on top. The black vertical lines in the wavelet scalograms are durations of known astronomical cycles. From left to right, these cycles are the 8.5-kyr half precession, ~16-kyr precession, 28-kyr obliquity,50-kyr eccentricity, 100-kyr eccentricity, 200-kyr eccentricity, 405-kyr eccentricity and the 1.6-Myr eccentricity cycle. F. The black line is a 405-kyr eccentricity cycle extracted from the Induration record. The red line is the 405-kyr eccentricity cycle extracted from the Hilbert transform of the 100-kyr eccentricity cycle of the Induration record. G. The 100-kyr eccentricity cycle was extracted from the Induration record (black line) and the Hilbert transform of the 100-kyr eccentricity cycle (red line). H.) Obliquity cycle extracted from the Induration record (black line), and the Hilbert transform of the obliquity cycle (red line). I. The precession cycle extracted from the Induration record (black line) and the Hilbert transform of the precession cycle (red line)."
 
 Ludlow_col <- geo_col(name = "Ludlow")
 Pridoli_col <- geo_col(name = "Pridoli")
@@ -984,8 +2019,16 @@ Pridoli_col <- geo_col(name = "Pridoli")
 Top_record  <- max(kosov_time[,2])
 bottom_record <- min(kosov_time[,2])
   
-ylims <- c(min(kosov_time[, 2])-5,max(kosov_time[,2])+5)
-vert_lines <-   c(9,17,21,30,55,125,96,220,405,1000)
+ylims <- rev(c(min(kosov_time[, 2])-5,max(kosov_time[,2])+5))
+vert_lines <-   c(8.5,16,28,50,105,200,405,1600)
+
+
+
+induration_time <- linterp(induration_time,genplot=FALSE)
+induration_time_wt <- analyze_wavelet(data = induration_time,
+                                      dj=1/200,upperPeriod = 2400,
+                                      lowerPeriod = 5,omega_nr = 6)
+
 {
 layout.matrix <- matrix(c(rep(0,4),1,rep(0,4),seq(2,10,by=1)),
                         nrow = 2,
@@ -1027,7 +2070,8 @@ plot(
   xaxt = 'n',
   xaxs = "i"
 )
-abline(v = vert_lines)
+
+abline(v = vert_lines, col=adjustcolor("black", alpha.f=0.4), lwd=6, lty=1)
 
 
 text(x=6.5,
@@ -1046,7 +2090,7 @@ plot(
           5),
   col = "white",
   xlab = "",
-  ylab = "Time floating (kyr)",
+  ylab = "Age (Ma)",
   xaxt = "n",
   xaxs = "i",
   yaxs = "i",
@@ -1058,15 +2102,16 @@ par(xpd = NA)
 title(main = "A", line = 1, cex.main = 1.5)
 par(xpd = FALSE) # reset
 
-a <- round(c(max(kosov_time[, 2]), min(kosov_time[, 2])))
+a <- round(c(max(kosov_time[, 2]), min(kosov_time[, 2]))/1000)
 
+axis(2, at = rev(1000*seq(a[1],
+                          a[2]-0.25, by = -0.25)),
+     labels = rev(seq(a[1],
+                      a[2]-0.25, by = -0.25)))
 
-axis(2, at = rev(seq(a[2], a[1], by = 100)), labels = rev(seq(a[2], a[1], by = 100)))
+Hmisc::minor.tick(nx = 0, ny = 10,   # Ticks density
+                  tick.ratio = 0.5) # Ticks size
 
-Hmisc::minor.tick(nx = 0,
-                    ny = 20,
-                    # Ticks density
-                    tick.ratio = 0.5) # Ticks size
 
 polygon(
     y = c(
@@ -1300,10 +2345,8 @@ mtext(
   font = par()$font.axis,
   cex = par()$cex.axis
 )
-abline(v = log2(vert_lines))
 
-
-
+abline(v = log2(vert_lines), col=adjustcolor("black", alpha.f=0.4), lwd=6, lty=1)
 
 plot(
   x = induration_filt_time_405[, 2],
@@ -1390,22 +2433,20 @@ lines(
 )
 }
 ```
-## 3.7 Show the phase relationships 
+
+## 3.7 The phase relationships
 
 The 405-kyr eccentricity cycle was extracted from the induration record and extracted from the Hilbert transform of the 100-kyr eccentricity cycle of the induration record. The 100-kyr eccentricity cycle was extracted from the induration record and extracted from the Hilbert transform of the precession cycle of the induration record. The relationship between the 405-kyr eccentricity cycle directly extracted from the record and the one obtained from the Hilbert transform of the 100-kyr cycle shows an anti-phased relationship. The relationship between the 100-kyr eccentricity cycle directly extracted from the induration record and that obtained from the Hilbert transform of the precession cycle demonstrates a generally anti-phased relationship as well.
 
-
 ```{r}
-#| echo: true
 #| results: hide
 #| warning: false
 #| fig.show: TRUE 
-#| fig.cap: "Figure 8. Astronomical cycles extracted from the tuned induration record.
-#| A.The black line is a 405-kyr eccentricity cycle extracted from the Induration record. The red line is the 405-kyr eccentricity cycle extracted from the Hilbert transform of the 100-kyr eccentricity cycle of the Induration record. B.The black line is a 100-kyr eccentricity cycle extracted from the Induration record. The red line is the 100-kyr eccentricity cycle extracted from the Hilbert transform of the precession cycle of the Induration record."
+#| fig.cap: "Figure 8. Astronomical cycles extracted from the tuned induration record. A. The black line is a 405-kyr eccentricity cycle extracted from the Induration record. The red line is the 405-kyr eccentricity cycle extracted from the Hilbert transform of the 100-kyr eccentricity cycle of the Induration record. B. The black line is a 100-kyr eccentricity cycle extracted from the Induration record. The red line is the 100-kyr eccentricity cycle extracted from the Hilbert transform of the precession cycle of the Induration record."
 
 
 ylims <- c(min(kosov_time[, 2])-5,max(kosov_time[,2])+5)
-
+ylims <- rev(ylims/1000)
 layout.matrix <- matrix(c(1,2),
                         nrow = 1,
                         ncol = 2 ,
@@ -1418,62 +2459,53 @@ graphics::layout(mat = layout.matrix,
 
 par(mar = c(4, 4, 4, 2))
 
-
-par()
 plot(
   x = induration_filt_time_405[, 2],
-  y = induration_filt_time_405[, 1],
+  y = induration_filt_time_405[, 1]/1000,
   type = "l",
   ylim =ylims,
   xlab = "405-kyr ecc",col="black",
-  ylab = "Time floating (kyr)",
+  ylab = "Age (Ma)",
   main="A"
 )
 
 lines(x = (induration_filt_time_110_hilb_405[, 2]
-            -mean(induration_filt_time_110_hilb_405[, 2]))*2+mean(induration_filt_time_405[,2]), y = induration_filt_time_110_hilb_405[, 1], col =
+            -mean(induration_filt_time_110_hilb_405[, 2]))*2+mean(induration_filt_time_405[,2]), y = induration_filt_time_110_hilb_405[, 1]/1000, col =
         "red")
 
 plot(
   x = induration_filt_time_110[, 2],
-  y = induration_filt_time_110[, 1],
+  y = induration_filt_time_110[, 1]/1000,
   type = "l",
   ylim =ylims,
   xlab = "100-kyr ecc",col="black",
-  ylab = "Time floating (kyr)",
+  ylab =  "Age (Ma)",
   main="B"
 )
 
 lines(x = (induration_filt_time_prec_hilb_110[, 2]
-            -mean(induration_filt_time_prec_hilb_110[, 2]))*2+mean(induration_filt_time_110[,2]), y = induration_filt_time_prec_hilb_110[, 1], col =
+            -mean(induration_filt_time_prec_hilb_110[, 2]))*2+mean(induration_filt_time_110[,2]), y = induration_filt_time_prec_hilb_110[, 1]/1000, col =
         "red")
 
 ```
 
-## 3.8 Rate of change in the δ13Ccarb curve 
-The rate of change (‰/kyr) was calculated from the LOWESS regression derived curve of the δ¹³Ccarb record. The regression was applied to minimize the influence of short-term local noise (Figure 9). The rate of change (‰/kyr) reaches a maximum of 0.08 (‰/kyr) during the onset of the Lau biogeochemical Event. 
+## 3.8 Rate of change in the δ13Ccarb curve
 
-The rate of change (‰/kyr) record contains a strong imprint of the 100-kyr eccentricity cycle which was subsequently extracted from the record and plotted next to the 100-kyr eccentricity cycle extracted from the induration record. During the Lau when when rate of change (‰/kyr) record showed its largest amplitude variations. The 100-kyr eccentricity cycle extracted from the rate of change (‰/kyr) record is generally anti-phased with the 100-kyr eccentricity cycle extracted from the induration record.  
+The rate of change (‰/kyr) of the δ13Ccarb curve was calculated from the LOWESS regression applied to the δ¹³Ccarb record. The regression was applied to minimise the influence of short-term local noise (Figure 9). The rate of change (‰/kyr) reaches a maximum of 0.09 (‰/kyr) during the onset of the Lau biogeochemical Event.
+The rate of change (‰/kyr) record contains a strong imprint of the 100-kyr eccentricity cycle, which was subsequently extracted from the record and plotted next to the 100-kyr eccentricity cycle extracted from the induration record. During the Lau, the rate of change (‰/kyr) recorded its largest amplitude variations. The 100-kyr eccentricity cycle extracted from the rate of change (‰/kyr) record is generally anti-phased with the 100-kyr eccentricity cycle extracted from the induration record.
+
 
 ```{r}
-#| echo: true
 #| results: hide
 #| warning: false
 #| fig.show: TRUE  
-#| fig-width: 7
+#| fig-width: 8
 #| fig-height: 8
-#| fig.cap: "Figure 9. Rate of change (‰/kyr) of the δ13Ccarb record.
-#| A Stages.
-#| B.Event zone subdivision.
-#| C.The Induration record.
-#| D.The δ13Ccarb record (lightgreenn).and the LOWESS smoothed curve (darkgreen)
-#| E.The δ13Ccarb rate of change record (‰/kyr) and the 100-kyr eccentricity cycle extracted from said record
-#| F.The 100-kyr eccentricity cycle extracted from The δ13Ccarb rate of change record (‰/kyr) (darkgreen) and
-#| the 100-kyr eccentricity cycle extraced from the induration record."
+#| fig.cap: "Figure 9. Rate of change (‰/kyr) of the δ13Ccarb record. A Stages. B. Event zone subdivision. C. The Induration record. D. The δ13Ccarb record (light green),  and the LOWESS smoothed curve (dark green) E. The δ13Ccarb rate of change record (‰/kyr) and the 100-kyr eccentricity cycle extracted from said record F. The 100-kyr eccentricity cycle extracted from the δ13Ccarb rate of change record (‰/kyr) (dark green) and the 100-kyr eccentricity cycle extracted from the induration record."
 
 d13C_tuned_diff_110 <-
-  taner(
-    d13C_tuned[,c(1,3)],
+  astrochron::taner(
+     astrochron::linterp(d13C_tuned[,c(1,3)],genplot=FALSE,verbose=FALSE),
     fhigh = 1 / 150,
     flow = 1 /  80,
     roll = 10 ^ 6,
@@ -1481,33 +2513,8 @@ d13C_tuned_diff_110 <-
     genplot=FALSE
   )
 kosov_d13Ccarb_time_110 <-
-  taner(
-    noLow(linterp(kosov_d13Ccarb_time[,c(1,2)],    genplot=FALSE
-),smooth=0.25,1,    genplot=FALSE),
-    fhigh = 1 / 150,
-    flow = 1 /  80,
-    roll = 10 ^ 6,
-    xmax = 1/50,
-        genplot=FALSE
-
-  )
-
-kosov_big13C_time_110 <-
-  taner(
-    noLow(linterp(kosov_big13C_time[,c(1,2)],    genplot=FALSE
-),smooth=0.25,1,    genplot=FALSE),
-    fhigh = 1 / 135,
-    flow = 1 /  80,
-    roll = 10 ^ 6,
-    xmax = 1/50,
-        genplot=FALSE
-
-  )
-
-
-kosov_d13Corg_time_110 <-
-  taner(
-    noLow(linterp(kosov_d13Corg_time[,c(1,2)],    genplot=FALSE
+  astrochron::taner(
+    astrochron::noLow(astrochron::linterp(kosov_d13Ccarb_time[,c(1,2)],    genplot=FALSE
 ),smooth=0.25,1,    genplot=FALSE),
     fhigh = 1 / 150,
     flow = 1 /  80,
@@ -1524,8 +2531,10 @@ graphics::layout(mat = layout.matrix,
 
 par(mar = c(4, 4, 2, 0))
 
+a <- round(c(max(kosov_time[, 2]), min(kosov_time[, 2]))/1000)
+
 ylims <- c(min(kosov_time[, 2])-5,max(kosov_time[,2])+5)
-a <- round(c(max(kosov_time[, 2]), min(kosov_time[, 2])))
+ylims <- rev(ylims)
 
 plot(
   x = c(0, 1),
@@ -1533,7 +2542,7 @@ plot(
           5),
   col = "white",
   xlab = "",
-  ylab = "Time floating (kyr)",
+  ylab = "Age (Ma)",
   xaxt = "n",
   xaxs = "i",
   yaxs = "i",
@@ -1542,14 +2551,13 @@ plot(
   main="A"
 )    
 
+axis(2, at = rev(1000*seq(a[1],
+                          a[2]-0.25, by = -0.25)),
+     labels = rev(seq(a[1],
+                      a[2]-0.25, by = -0.25)))
 
-
-axis(2, at = rev(seq(a[2], a[1], by = 100)), labels = rev(seq(a[2], a[1], by = 100)))
-
-Hmisc::minor.tick(nx = 0,
-                    ny = 20,
-                    # Ticks density
-                    tick.ratio = 0.5) # Ticks size
+Hmisc::minor.tick(nx = 0, ny = 10,   # Ticks density
+                  tick.ratio = 0.5) # Ticks size
 
 polygon(
     y = c(
@@ -1740,14 +2748,11 @@ plot(d13C_tuned_diff_110[,c(2,1)], col="darkgreen", lwd=2,ylim=ylims,xlab="",
 
 ```
 
-
 ## 3.9 The lag-1 sea-level curve
 
-The lag-1 function was used to calculate the lag-1 autocorrelation coefficient using a windowed analysis Monte- Carlo analysis. The resulting curve can be used as a sea-level proxy which functions as a a proxy for the sea-level changes (Li et al., 2018). The The lag-1 does show a few trends (see figure 10). The lag-1 sea-level curve varies and exhibits clear cyclicity throughout the studied interval. Prior to the Lau excursion, the curve is characterized by relatively high values superimposed by some low-amplitude fluctuations. At the onset of the Lau event, the curve rises to slightly higher values followed by a series of oscillations trending towards a minimum during the middle of the Lau δ13Ccarb excursion. Toward the top of the studied succession, the curve returns to higher and more regular values. The lag-1 record contains a strong imprint of 405-kyr eccentricity cycle which was extracted and compared to the 405-kyr eccentricity cycle extracted from the induration record. The 405-kyr eccentricity cycle extracted from the rate lag-1 record is generally anti-phased with the 405-kyr eccentricity cycle extracted from the induration record.  
-
+The lag-1 function was used to calculate the lag-1 autocorrelation coefficient using a windowed analysis Monte-Carlo analysis. The resulting curve serves as a proxy for sea-level changes (Li et al., 2018). The lag-1 does show a few trends (see Figure 10). Before the Lau excursion, the curve is characterised by relatively high values superimposed by some low-amplitude fluctuations. At the onset of the Lau event, a minor curve rise is observed, followed by a large drop towards a minimum during the middle of the Lau δ13Ccarb excursion. Toward the top of the studied succession, the curve returns to higher and more regular values. The lag-1 record contains the imprint of the 405-kyr eccentricity cycle, which was extracted and compared to the 405-kyr eccentricity cycle extracted from the induration record. The 405-kyr eccentricity cycle extracted from the rate lag-1 record is generally anti-phased with the 405-kyr eccentricity cycle extracted from the induration record.
 
 ```{r}
-#| echo: true
 #| results: hide
 #| warning: false
 #| fig.show: TRUE  
@@ -1765,50 +2770,48 @@ induration_2[,2] <- induration_2[,2]-min(induration_2[,2])
 induration_2[,2] <- induration_2[,2]/max(induration_2[,2])
 induration_2[,2] <- induration_2[,2]*5
 
-induration_time_2 <- curve2tune(
-  data = induration_2,
-  tracked_cycle_curve = induration_track_comp,
-  tracked_cycle_period = 405,
-  genplot = FALSE,
-  keep_editable = FALSE
-)
-
+induration_time_2<- tune(induration_2,kosov_time,extrapolate=F,genplot=F,check=T,verbose=T)
 induration_time_2 <- na.omit(induration_time_2)
 
+# induration_time_lag_1_2 <- lag_1(
+#   data = induration_time_2,
+#   n_sim = 10000,
+#   run_multicore = TRUE,
+#   win_max = 250,
+#   win_min = 10,
+#   verbose = TRUE
+# )
+# write.csv(induration_time_lag_1_2,"D:/Phd/documents/kosov/induration_time_lag_1_2.csv")
 ```
 
-::: {.callout-caution collapse="false"}
-❗ This  code  takes a long time to run so one can also download the results from github
-induration_time_lag_1 <- lag_1(
-  data = induration_time_2,
-  n_sim = 1000,
-  run_multicore = TRUE,
-  win_max = 250,
-  win_min = 25,
-  verbose = TRUE
-)
-write.csv(induration_time_lag_1,"induration_time_lag_1.csv")
-:::
-  
+
+```{r, results='asis', echo=FALSE}
+# Only show this callout in HTML
+if (knitr::is_html_output()) {
+  cat(
+'::: {.callout-caution collapse="true"}
+ This code takes a long time to run so one can also download the results from github 
+ induration_time_lag_1 <- lag_1( data = induration_time_2, n_sim = 1000, run_multicore = TRUE, win_max = 300, win_min = 50, verbose = TRUE ) write.csv(induration_time_lag_1,"induration_time_lag_1.csv")
+:::'
+  , sep = "\n")
+}
+```
+
+
 ```{r}
-#| echo: true
 #| results: hide
 #| warning: false
 #| fig.show: TRUE  
 #| fig-width: 7
 #| fig-height: 10 
-#| fig.cap: "Figure 10. Rate of change of the δ13Ccarb record.
-#| A Stages.
-#| B.Event zone subdivision.
-#| C.The Induration record.
-#| D.The δ13Ccarb record (lightgreenn).and the LOWESS smoothed curve (darkgreen)
-#| E.The lag-1 sea-level curve (red) and the 405-kyr eccentrcity cyle extracted from said record (brown)
-#| F.The 405-kyr eccentrcity cyle extracted from the lag-1 curve (brown) and the The 405-kyr eccentrcity cyle extracted from the Induration record (blue)."
+#| fig.cap: "Figure 10. Rate of change of the δ13Ccarb record. A Stages. B. Event zone subdivision. C. The Induration record. D. The δ13Ccarb record (light green) and the LOWESS smoothed curve (dark green) E. The lag-1 sea-level curve (red) and the 405-kyr eccentricity cycle extracted from said record (brown). F. The 405-kyr eccentricity cycle extracted from the lag-1 curve (brown) and the 405-kyr eccentricity cycle extracted from the Induration record (blue)."
 
-induration_time_lag_1 <- read.csv(
-  "https://raw.githubusercontent.com/stratigraphy/Kosov-cyclostrat/main/induration_time_lag_1.csv"
-)
-induration_time_lag_1 <- induration_time_lag_1[,c(2,3)]
+ induration_time_lag_1 <- read.csv(
+   "https://raw.githubusercontent.com/stratigraphy/Kosov-cyclostrat/main/induration_time_lag_1_2.csv"
+ )
+
+#induration_time_lag_1 <- read.csv("D:/Phd/documents/kosov/induration_time_lag_1_2.csv")
+induration_time_lag_1 <- linterp(induration_time_lag_1[,c(2,3)],verbose=F,genplot=F)
 
 # induration_time_lag_1_wt <- analyze_wavelet(
 #   data = induration_time_lag_1,
@@ -1831,7 +2834,7 @@ induration_time_lag_1_405 <-
     fhigh = 1 / 505,
     flow = 1 /  305,
     roll = 10 ^ 6,
-    xmax = 1/50,detrend=TRUE,demean=TRUE,genplot=FALSE)
+    xmax = 1/50,detrend=FALSE,demean=FALSE,genplot=FALSE)
 
 
 layout.matrix <- matrix(c(1, 2,3,4,5,6), nrow = 1, ncol = 6)
@@ -1841,8 +2844,7 @@ graphics::layout(mat = layout.matrix,
 
 par(mar = c(4, 4, 2, 0))
 
-ylims <- c(min(kosov_time[, 2])-5,max(kosov_time[,2])+5)
-a <- round(c(max(kosov_time[, 2]), min(kosov_time[, 2])))
+ylims <- rev(c(min(kosov_time[, 2])-5,max(kosov_time[,2])+5))
 
 plot(
   x = c(0, 1),
@@ -1850,7 +2852,7 @@ plot(
           5),
   col = "white",
   xlab = "",
-  ylab = "Time floating (kyr)",
+  ylab = "Age (Ma)",
   xaxt = "n",
   xaxs = "i",
   yaxs = "i",
@@ -1860,13 +2862,14 @@ plot(
 )    
 
 
+axis(2, at = rev(1000*seq(a[1],
+                          a[2]-0.25, by = -0.25)),
+     labels = rev(seq(a[1],
+                      a[2]-0.25, by = -0.25)))
 
-axis(2, at = rev(seq(a[2], a[1], by = 100)), labels = rev(seq(a[2], a[1], by = 100)))
+Hmisc::minor.tick(nx = 0, ny = 10,   # Ticks density
+                  tick.ratio = 0.5) # Ticks size
 
-Hmisc::minor.tick(nx = 0,
-                    ny = 20,
-                    # Ticks density
-                    tick.ratio = 0.5) # Ticks size
 
 polygon(
     y = c(
@@ -2057,30 +3060,29 @@ plot(induration_time_lag_1_405[,c(2,1)], col="brown", lwd=2,ylim=ylims,xlab="",
 
 # 4. Discussion
 
-## 4.1 The astrochronology and the imprint of astronomical cycles 
-The anchored astrochronological age model was used to assign durations, and associated uncertainties to the record in the Kosov quarry section, which are tabulated in Table 1. The Lau event lasted 1.26 ± 0.26 Myr, whereas the LKB Event was short as 30 ± 10 kyr. The durations and associated uncertainties for the Lau Event and its subdivisions are the first astrochronlogical constrains available for a near complete record spanning the Lau Event. The durations and associated uncertainties are therefore the best constrained reference values available to date. The uncertainties assigned to intervals in the record are based on the analytical uncertainty of the wavelet resulting in an uncertainty of ~20%. Assigning the uncertainty using for instance a multi-proxy study might be able reduce the uncertainty associated with the astrochronology of the Kosov quarry section. 
+## 4.1 The astrochronology and the imprint of astronomical cycles
 
-The CWT in the time domain contains spectral peaks can be observed which can be linked to the 9-kyr half precession, 17-kyr precession,21-kyr precession, 30-kyr obliquity,55-kyr eccentricity?, 96-kyr eccentricity,125-kyr eccentricity, 220-kyr eccentricity, 405-kyr eccentricity and the 1-Myr eccentricity cycle (see Figure 7). The fact that a whole suite of spectral peaks of known astronomical cycles is observed in the CWT scalogram validates the underlying age-model. Furthermore the fact double peaks associated with the 17-kyr precession,21-kyr precession, and 96-kyr eccentricity and 125-kyr eccentricity highlights the quality of the imprint of astronomical cycles in the studied record. 
-The spectral peak of ~55 kyr observed in the average CWT scalogram. This spectral peak can be either the 55 or 54-kyr eccentricity cycle or the 52.8-kyr obliquity cycle (Laskar, 2020) (see Figure 7). The spectral power of the 55-kyr cycle is highly variable, indicating that the 55-kyr cycle might be of a transient nature unrelated to astronomical forcing. The average spectral power of the induration record contains a peak at ~1-Myr. This peak is most likely related the 966-kyr eccentricity cycle (Hinnov, 2000; Laskar et al., 2004). Since the record is quite short (2150 kyr) it's interpretation remains preliminary. 
+The anchored astrochronological age model was used to assign ages, durations, and associated uncertainties to chrono- and geochronologic units, lithological units, and events in the Kosov quarry section, as tabulated in Table 1. The Lau biogeochemical Event started at 424.06 ± 0.55 Ma and lasted 0.87 ± 0.03 Myr; in contrast, the LKB Event was as short as 30 ± 10 kyr. The durations and associated uncertainties for the Lau Event and its subdivisions are the first astrochronological constraints available for a near-complete record spanning the Lau Event. The durations and associated uncertainties are therefore the best constrained reference values to date. A previous estimate for the onset of the Lau Event is based on the dating of a hiatus in the Cellon section, spanning 423.83 ± 0.55 Ma to 424.19 ± 0.55 Ma, with the Lau Biogeochemical Event starting within the hiatus [@artsAgeOrbitalForcing2024].  Our age for the onset of the Lau biogeochemical Event (424.06 ± 0.55 Ma) falls within this range, supporting alignment with previous results. The uncertainties assigned to durations in the record are around ~15%. Since only one proxy was used, a multi-proxy study might even further reduce the uncertainty in the underlying astrochronology of the Kosov quarry section.
 
-Since amplitude modulating cycles apply unidirectional to the amplitude of the signal, irrespective of whether the proxy exhibits a positive or negative response to insolation forcing it is possible to infer the phase relationship between astronomical cycles extracted from the proxy record and its relationship with the true phase of the astronomical cycle, as well as its relationship with changes in insolation (Hinnov, 2000; Laskar et al., 2004). The 405-kyr eccentricity cycle directly extracted from the record and derived from the Hilbert transform of the 100-kyr cycle show an anti-phased relationship. The 100-kyr eccentricity cycle obtained directly from the induration record and from the Hilbert transform of the precession cycle also demonstrates a generally anti-phased relationship. This indicates that during insolation minima induration values are at a maximum. This phase relationship makes sense because during an insolation,maxima seasonality increases, which leads to higher runoff, increasing detrital products and decreasing carbonate productivity (lower induration) (Mutterlose and Ruffell, 1999; Martinez, 2018). 
+The CWT in the time domain contains spectral peaks which can be linked to the 8.5-kyr half precession, 16-kyr precession, 28-kyr obliquity,50-kyr eccentricity, 100-kyr eccentricity, 200-kyr eccentricity, 405-kyr eccentricity and the 1.6-Myr eccentricity cycle (see Figure 7). The observation of a whole suite of spectral peaks corresponding to known astronomical cycles in the CWT scalogram validates the underlying age model. The periods of the obliquity and precession cycles are at the shorter end of the typically expected durations for the Silurian, yet remain within the current uncertainty range for the estimated durations of these cycles during the Silurian  [@walthamMilankovitchPeriodUncertainties2015;@farhatResonantTidalEvolution2022;@wu650MyrHistoryEarths2024]. The spectral peak of ~55 kyr was observed in the average CWT scalogram. This spectral peak can be either the 55 or 54-kyr eccentricity cycle or the 52.8-kyr obliquity cycle [@laskarAstrochronology2020, p. 20; @laskarLongtermNumericalSolution2004] (see Figure 7). The spectral power of the 55-kyr cycle is highly variable, indicating that the 55-kyr cycle might be of a transient nature unrelated to astronomical forcing. A 200-kyr cycle can also be identified in the record. Given the strong imprint of the 100-kyr and 405-kyr eccentricity cycles, it is reasonable to interpret the 200-kyr cycle as the seldom observed 200-kyr eccentricity cycle (@hilgenPaleoclimateRecordsReveal2020). The average spectral power of the induration record exhibits a peak at \~1.6 million years. This peak is most likely related to the 1.6-Myr eccentricity cycle. This peak is most likely related the 1.6-Myr eccentricity cycle @hinnovNewPerspectivesOrbitally2000; @laskarLongtermNumericalSolution2004. Since the record is quite short (1800 kyr), its interpretation remains preliminary.
 
-The established relationship between insolation and induration can also be used to understand the imprint of astronomical cycles in the rate of change (‰/kyr) of the δ¹³Ccarb record and the lag-1 sea-level curve. Since The 100-kyr eccentricity cycle extracted from the rate of change (‰/kyr) record is generally anti-phased with the 100-kyr eccentricity cycle extracted from the induration record it as such indicates that the rate of change (‰/kyr) is the highest during eccentricity maxima. The 405-kyr eccentricity cycle extracted from the rate lag-1 record is generally anti-phased with the 405-kyr eccentricity cycle extracted from the induration record indicating that sea-level is the highest during eccentricity maxima.
+Since amplitude modulating cycles apply unidirectional to the amplitude of the signal, irrespective of whether the proxy exhibits a positive or negative response to insolation forcing it is possible to infer the phase relationship between astronomical cycles extracted from the proxy record and its relationship with the true phase of the astronomical cycle, as well as its relationship with changes in insolation (Hinnov, 2000; Laskar et al., 2004). The 405-kyr eccentricity cycle directly extracted from the record and derived from the Hilbert transform of the 100-kyr cycle shows an anti-phased relationship. The 100-kyr eccentricity cycle obtained directly from the induration record and from the Hilbert transform of the precession cycle also demonstrates a generally anti-phased relationship. This indicates that during isolation minima, induration values are at a maximum. This phase relationship is logical because during an isolation maximum, seasonality increases, leading to higher runoff, increased detrital products, and decreased carbonate productivity (lower induration) [@mutterloseMilankovitchscalePalaeoclimateChanges1999; @martinezMechanismsPreservationEccentricity2018].
+
+The established relationship between isolation and induration can also be used to understand the imprint of astronomical cycles in the rate of change ‰/kyr) of the δ¹³Ccarb record and the lag-1 sea-level curve. Since the 100-kyr eccentricity cycle extracted from the rate of change (‰/kyr) record is generally anti-phased with the 100-kyr eccentricity cycle extracted from the induration record, this indicates that the rate of change (‰/kyr) is the highest during eccentricity maxima. The 405-kyr eccentricity cycle extracted from the rate lag-1 record is generally anti-phased with the 405-kyr eccentricity cycle extracted from the induration record, indicating that sea-level is the highest during eccentricity maxima.
 
 ## 4.2 Astronomical cycles pacing the Ludfordian carbon cycle
 
-The new age model enables the quantification of the rate of change in the δ¹³Ccarb record, yielding maximum values of 0.08‰ per kyr for the Lau Event. These rates were derived from a LOWESS regression of the δ¹³Ccarb curve to minimize the influence of short-term local noise. As such, the values represent robust regional and potentially global benchmarks for the Lau event. The high rate of change in the δ¹³Ccarb record (0.08‰ per kyr) during the Lau Event suggests that the Silurian carbon cycle is was highly dynamic during the Lau Event. Since it was possible to constrain the rate of change it will be possible to model the Lau in the domain seeing whether models such as those of Fyrda et al., (2023) still hold up or that alternative models that allow for non-steady behavior need to be used. 
-The 100-kyr eccentricity imprint in the δ¹³Ccarb rate-of-change record during the Lau Event indicates that the carbon cycle was at least partly paced by this cycle. The phase relationship shows that the highest rates of change occurred during eccentricity maxima. This suggests that eccentricity maxima resulted in enhanced organic carbon burial during the Lau Event. The observed phase relationship aligns with a scenario where eccentricity
-maxima increased the amplitude of climate precession resulting in enhanced seasonality (Gambacorta, 2018; Rossignol-Strick, 1985; Rohling, 1994; Van Os et al., 1994; Sachs and Repeta, 1999; Wang, 2009). The resulting increase in seasonality intensified the hydrological cycle increasing physical and chemical weathering, supplying fine-grained sediments and nutrients through enhanced (monsoonal) rainfall. Increased fluvial discharge promoted seasonal productivity blooms, facilitating the accumulation of organic-rich deposits. In contrast, during eccentricity minima the reduced precession amplitude weakened monsoon intensity, lowered nutrient delivery, and re-established more oxic conditions. 
+The new age model enables the quantification of the rate of change in the δ¹³Ccarb record, yielding maximum values of 0.09‰ per kyr for the Lau Event. These rates were derived from a LOWESS regression of the δ¹³Ccarb curve to minimise the influence of short-term local noise. As such, the values represent robust regional and potentially global benchmarks for the Lau event. The high rate of change in the δ¹³Ccarb record (0.09‰ per kyr) during the Lau Event suggests that the Silurian carbon cycle was highly dynamic during the Lau Event. Since it is now possible to constrain the rate of change, it will be possible to model the Lau biogeochemical event in the domain. This will enable us to examine whether models, such as those of @frydaCarbonSulfurCycling2020 till hold or whether alternative models that allow for non-steady behaviour need to be used. The 100-kyr eccentricity imprint in the δ¹³Ccarb rate-of-change record during the Lau Event indicates that the carbon cycle was at least partly paced by this cycle. The phase relationship shows that the highest rates of change occurred during eccentricity maxima. This suggests that eccentricity maxima resulted in enhanced organic carbon burial during the Lau Event. The observed phase relationship aligns with a scenario in which eccentricity maxima increased the amplitude of climate precession, resulting in enhanced seasonality [@gambacortaOrbitalControlCyclical2018; @rossignol-strickMEDITERRANEANQUATERNARYSAPROPELS1985; @vanosFormationPlioceneSapropels1994;
+@sachsOligotrophyNitrogenFixation1999; @wangGlobalMonsoonGeological2009]. The resulting increase in seasonality intensified the hydrological cycle, increasing physical and chemical weathering, supplying fine-grained sediments and nutrients through enhanced (monsoonal) rainfall. Increased fluvial discharge promoted seasonal productivity blooms, facilitating the accumulation of organic-rich deposits. In contrast, during eccentricity minima, the reduced precession amplitude weakened monsoon intensity, lowered nutrient delivery, and re-established more oxic conditions.
 
+## 4.3 Astronomical pacing the lag-1 sea-level curve
 
-## 4.3 Astronomical cycles and its pacing of the lag-1 sea-level curve 
-
-The lag_1 curve used as a sea-level proxy aligns with previous sea-level interpretation made for the Lau Event (ref)(see figure 10). The Lau Event is associated with a large regression and a period of low sea-level (see figure 10) (ref). The lag-1 curve indicates that two large regression occurred during the Lau which is in-line with previous interpretations which inferred that the Lau Event resulted in the Mid-Ludfordian Glaciation (ref). The 405-kyr eccentricity cycle extracted from the rate lag-1 record is generally anti-phased with that from the induration record, indicating that sea level is highest during eccentricity maxima (Figure 10). The relationship between astronomical forcing and sea-level is much akin to that observed when sea-level was under a glacio-eustatic regime (ref). The transition from relatively stable low-amplitude variability into pronounced eccentricity-paced oscillations during the Lau Event further underscores the coupling between astronomical forcing, glacio-eustatic change, and the global carbon cycle during the Lau Event. The increased amplitude of sea-level variability indicates that astronomically paced glacio-eustatic fluctuations were amplified by the climatic changes associated with the Lau Event, culminating in the Mid-Ludfordian Glaciation.
+The lag-1 curve used as a sea-level proxy aligns with previous sea-level interpretation made for the Lau Biogeochemical Event [@mandaEnvironmentalBioticChanges2006; @frydaCarbonSulfurCycling2020] (see figure 10). The Lau Event is associated with a large regression and a period of low sea-level (see figure 10). The Lau Event is associated with a large regression and a period of low sea-level (see figure 10). The lag-1 curve indicates that a large regression occurred during the Lau which is in-line with previous interpretations which inferred that the Lau Event resulted in the Mid-Ludfordian Glaciation [@frydaCarbonSulfurCycling2020]. The 405-kyr eccentricity cycle extracted from the rate lag-1 record is generally anti-phased with that from the induration record, indicating that sea level is highest during eccentricity maxima (Figure 10). The relationship between astronomical forcing and sea-level is much akin to that observed when sea-level was under a glacio-eustatic regime [@liSedimentaryNoiseSea2018; @LOURENS199743]. The transition from relatively stable low-amplitude variability into pronounced eccentricity-paced oscillations during the Lau Event further underscores the coupling between astronomical forcing, glacio-eustatic change, and the global carbon cycle during the Lau Event. The increased amplitude of sea-level variability indicates that astronomically paced glacio-eustatic fluctuations were amplified by the climatic changes associated with the Lau Event, culminating in the Mid-Ludfordian Glaciation.
 
 # 5. Conclusions
-The new astrochronology from the Kosov Quarry provides the first high-resolution temporal framework for the Lau biogeochemical Event. Cyclostratigraphic analysis demonstrates that the Lau lasted 1.26 ± 0.26 Myr, while the associated LKB Event was much shorter at 30 ± 10 kyr.
 
-Astronomical forcing is strongly imprinted across multiple proxies. The induration record is imprinted by astronomical cycles ranging from the the 9-kyr half precession to the 405-kyr eccentricity cycle. The δ¹³Ccarb rate-of-change record contains a strong imprint of the 100-kyr eccentricity cycle whereas the the lag-1 sea-level curve displays a strong pacing by the 405-kyr eccentricity cycle. The δ¹³Ccarb rate-of-change curve further documents maximum values of 0.08 ‰/kyr during the onset of the Lau, highlighting the highly dynamic character of the Silurian carbon cycle. The imprint of the 100-kyr eccentricity cycle in the δ¹³Ccarb rate-of-change also indicates that this cycle acted as a pacemaker of carbon cycle variability and carbon burial during the Lau Event. The strong imprint of the 405-kyr eccentricity cycle in the lag-1 sea-level and the inferred phase relationship indicates that sea-level was subjected to an astronomically paced glacio-eustatic regime. Together the results indicate that astronomical forcing amplified feedbacks between climate, organic carbon burial, glacio-eustasy shaping the magnitude and duration of the Lau Event. More broadly, these findings suggest that eccentricity-paced mechanisms played a pivotal role is shaping the climate, sea-level and carbon cycle dynamics during the Silurian.
+The new astrochronology from the Kosov Quarry provides the first high-resolution temporal framework for the Lau biogeochemical Event. Cyclostratigraphic analysis demonstrates that the Lau biogeochemical Event started at 424.06 ± 0.55 Ma and lasted 0.87 ± 0.03 Myr, while the associated LKB Event was much shorter at 30 ± 10 kyr. Astronomical forcing is strongly imprinted across multiple proxies. The induration record is imprinted by astronomical cycles ranging from the 9-kyr half-precession to the 405-kyr eccentricity cycle. The δ¹³Ccarb rate-of-change record contains a strong imprint of the 100-kyr eccentricity cycle, whereas the lag-1 sea-level curve displays a moderate imprint by the 405-kyr eccentricity cycle. The δ¹³Ccarb rate-of-change curve further documents maximum values of 0.09 ‰/kyr during the onset of the Lau, highlighting the highly dynamic character of the Silurian carbon cycle. The imprint of the 100-kyr eccentricity cycle in the δ¹³Ccarb rate-of-change also indicates that this cycle acted as a pacemaker of carbon cycle variability and carbon burial during the Lau Event. The strong imprint of the 405-kyr eccentricity cycle in the lag-1 sea-level and the inferred phase relationship indicate that sea-level was subjected to an astronomically paced glacio-eustatic regime. Together, the results indicate that astronomical forcing amplified feedbacks between climate, organic carbon burial, and glacio-eustasy, shaping the magnitude and duration of the Lau Event. More broadly, these findings suggest that eccentricity-paced mechanisms played a pivotal role is shaping the climate, sea-level and carbon cycle dynamics during the Silurian.
+
+# 6. References 
 
 
