@@ -1,0 +1,84 @@
+Sample ID,Position,sample,Interval Lithology,d13C,d44/40Ca,2sd,87Sr/86Sr,2sd,Sr,Mg,Sr/Ca,Mg/Ca
+A,0.39,micritic mudstone ,tuffitic calcareous marls (TCM) with limestone lenses ,-0.26,0.31,0.03,,,341,2462,0.72,0.019
+B,0.69,micritic mudstone,tuffitic calcareous marls (TCM) with limestone lenses,0.93,0.28,0.04,,,631,2131,1.03,0.013
+C,1.09,micritic mudstone,tuffitic calcareous marls (TCM) with limestone lenses,-0.07,0.24,0.05,,,658,2372,1.13,0.015
+D,1.47,micritic mudstone,tuffitic calcareous marls (TCM) with limestone lenses,0.16,0.34,0.03,,,378,1650,1.24,0.02
+E,2.14,micritic mudstone,tuffitic calcareous marls (TCM) with limestone lenses,-0.12,0.25,0.03,,,655,2413,1.13,0.015
+F,2.69,micritic mudstone,tuffitic calcareous marls (TCM) with limestone lenses,0.03,0.19,0.04,0.708649,0.000011,695,2797,1.14,0.016
+1,3.34,micritic mudstone,laminated TCM with micritic limestone lenses,-0.33,,,,,,,,
+2,3.62,micritic mudstone,laminated TCM with micritic limestone lenses,1.35,,,,,,,,
+3,3.9,micritic mudstone,laminated TCM with micritic limestone lenses,0.78,0.37,0.05,0.70866,0.000011,608,2432,0.97,0.014
+4,3.94,micritic mudstone,laminated TCM with micritic limestone lenses,0.69,,,,,,,,
+5,4.2,micritic mudstone,laminated TCM with micritic limestone lenses,0.72,,,0.70858,0.000009,544,2323,0.91,0.014
+6,4.23,micritic mudstone,laminated TCM with micritic limestone lenses,1.06,,,,,,,,
+7,4.4,micritic mudstone,laminated TCM with micritic limestone lenses,2.07,0.35,0.03,,,470,1734,0.89,0.012
+8,4.52,micritic mudstone,laminated TCM with micritic limestone lenses,1.83,,,0.708611,0.000018,485,2328,0.81,0.014
+9,4.6,micritic mudstone,laminated TCM with micritic limestone lenses,2.41,,,,,,,,
+10,4.8,micritic mudstone,laminated TCM with micritic limestone lenses,1.07,,,,,402,3620,0.99,0.032
+11,5.12,micritic mudstone,laminated TCM with micritic limestone lenses,1.84,0.82,0.03,0.708386,0.000009,371,3257,0.69,0.022
+11 dup,5.12,micritic mudstone,laminated TCM with micritic limestone lenses,,0.74,0.03,,,,,,
+12,5.14,micritic mudstone,laminated TCM with micritic limestone lenses,0.54,,,,,,,,
+13,5.2,micritic mudstone,laminated TCM with micritic limestone lenses,1,0.6,0.03,0.708394,0.000008,770,6953,0.77,0.025
+14,5.41,micritic mudstone,laminated TCM with micritic limestone lenses,2.6,,,,,,,,
+15,5.5,micritic mudstone,laminated TCM with micritic limestone lenses,2.71,0.33,0.03,0.708551,0.000009,454,1474,1.01,0.012
+15 dup,5.5,micritic mudstone,laminated TCM with micritic limestone lenses,,0.29,0.03,,,,,,
+16,5.6,micritic mudstone,laminated TCM with micritic limestone lenses,1.86,,,,,499,1447,1.05,0.011
+17,5.82,micritic mudstone,laminated TCM with micritic limestone lenses,0.69,,,,,,,,
+18,6.07,micritic mudstone,laminated TCM with micritic limestone lenses,2.96,,,,,,,,
+19,6.1,micritic mudstone,bioclastic limestone with orthocone cephalopods,2.63,0.8,0.04,0.708593,0.000014,260,3038,0.61,0.026
+20,6.2,bioclastic wackestone,micritic/bioclastic limestones with few marl layers,2.28,0.3,0.03,,,504,3521,1.29,0.032
+21,6.3,bioclastic wackestone,micritic/bioclastic limestones with few marl layers,3.18,,,,,,,,
+22,6.42,bioclastic wackestone,micritic/bioclastic limestones with few marl layers,3.77,,,,,,,,
+23,6.52,micritic wackestone ,micritic/bioclastic limestones with few marl layers,5.37,,,,,627,2052,1.18,0.014
+24,6.6,micritic wackestone,micritic/bioclastic limestones with few marl layers,6.07,,,0.708642,0.000008,562,2019,1.2,0.016
+25,6.71,micritic wackestone,micritic/bioclastic limestones with few marl layers,6.87,,,,,,,,
+26,6.81,micritic wackestone,micritic/bioclastic limestones with few marl layers,6.6,,,,,664,2387,1.14,0.015
+27,6.9,micritic wackestone,micritic/bioclastic limestones with few marl layers,6.72,,,,,645,3521,1.1,0.022
+28,7,micritic wackestone,micritic/bioclastic limestones with few marl layers,7.09,,,,,,,,
+29,7.05,micritic wackestone,micritic/bioclastic limestones with few marl layers,6.99,0.31,0.04,0.708613,0.00001,495,1546,1.18,0.013
+30,7.15,micritic wackestone,micritic/bioclastic limestones with few marl layers,7.05,,,,,,,,
+31,7.37,micritic wackestone,micritic/bioclastic limestones with few marl layers,7.38,,,,,,,,
+32,7.57,micritic wackestone,micritic/bioclastic limestones with few marl layers,7.34,0.33,0.04,0.708512,0.000005,435,1865,0.74,0.011
+33,7.77,micritic wackestone,micritic/bioclastic limestones with few marl layers,6.9,,,,,,,,
+34,7.8,micritic wackestone,micritic/bioclastic limestones with few marl layers,6.58,,,,,,,,
+35,8,micritic wackestone,micritic/bioclastic limestones with few marl layers,7.96,0.29,0.03,0.708447,0.000008,508,3454,0.92,0.022
+36,8.28,micritic wackestone,micritic/bioclastic limestones with few marl layers,7.57,,,,,,,,
+37,8.39,micritic wackestone,micritic/bioclastic limestones with few marl layers,7.56,0.32,0.04,0.708544,0.000009,630,2905,1.15,0.019
+37 dup,8.39,micritic wackestone,micritic/bioclastic limestones with few marl layers,7.56,0.29,0.03,,,,,,
+38,8.83,micritic wackestone,micritic/bioclastic limestones with few marl layers,6.95,,,,,,,,
+39,9,micritic wackestone,micritic/bioclastic limestones with few marl layers,8.07,,,0.708543,0.000009,,,,
+40,9.27,micritic wackestone,micritic/bioclastic limestones with few marl layers,6.83,,,,,,,,
+41,9.47,micritic wackestone,micritic/bioclastic limestones with few marl layers,8.05,,,,,,,,
+42,9.77,micritic wackestone,micritic/bioclastic limestones with few marl layers,8.11,,,,,,,,
+43,10,micritic wackestone,micritic/bioclastic limestones with few marl layers,7.56,,,,,,,,
+55,10.09,micritic wackestone,micritic/bioclastic limestones with few marl layers,7.85,0.32,0.02,,,653,2140,1.03,0.012
+55 dup,10.09,micritic wackestone,micritic/bioclastic limestones with few marl layers,7.85,0.34,0.04,,,,,,
+56,10.6,micritic wackestone,micritic/bioclastic limestones with few marl layers,8.14,,,,,648,2453,1.06,0.014
+58,11.7,micritic wackestone,micritic/bioclastic limestones with few marl layers,8.48,0.21,0.03,0.708681,0.000008,811,3070,1.15,0.016
+58 dup,11.7,micritic wackestone,micritic/bioclastic limestones with few marl layers,8.48,0.19,0.03,,,,,,
+59,12.4,micritic wackestone,micritic/bioclastic limestones with few marl layers,8.15,,,,,758,2578,1.13,0.014
+61,13.4,micritic wackestone,micritic/bioclastic limestones with few marl layers,8.52,0.28,0.04,,,655,2575,0.93,0.013
+63,14.5,micritic wackestone,micritic/bioclastic limestones with few marl layers,8.31,,,,,616,3533,1.01,0.021
+65,15.5,micritic wackestone,micritic/bioclastic limestones with few marl layers,7.88,0.29,0.03,0.708674,0.000012,748,3634,1.05,0.018
+67,16.5,micritic wackestone,micritic/bioclastic limestones with few marl layers,8.04,0.3,0.04,,,593,2588,0.94,0.015
+68,17,micritic wackestone,micritic/bioclastic limestones with few marl layers,7.95,,,,,643,2332,1.03,0.013
+70,17.9,micritic wackestone,micritic/bioclastic limestones with few marl layers,7.82,0.35,0.04,,,545,2616,0.84,0.015
+70 dup,17.9,micritic wackestone,micritic/bioclastic limestones with few marl layers,7.82,0.33,0.03,,,,,,
+71,18.3,packstone,crinoidal wackestones and packstones ,7.01,,,,,523,2200,0.8,0.012
+73,19,packstone,crinoidal wackestones and packstones,6.97,0.54,0.04,0.708632,0.000011,418,3212,0.58,0.016
+74,19.4,packstone,crinoidal wackestones and packstones,6.27,,,,,,,,
+75,19.8,packstone,crinoidal wackestones and packstones,5.07,,,,,539,2317,0.81,0.013
+76,20.3,packstone,crinoidal wackestones and packstones,4.72,0.48,0.04,0.708589,0.00001,419,1784,0.79,0.012
+77,20.8,packstone,crinoidal wackestones and packstones,3.55,,,,,,,,
+78,21.3,packstone,crinoidal wackestones and packstones,3.31,0.72,0.03,,,394,2283,0.54,0.011
+80,22.3,packstone,crinoidal wackestones and packstones,2.35,,,,,,,,
+82,23.3,packstone,crinoidal wackestones and packstones,1.4,0.76,0.03,,,342,1840,0.55,0.011
+84,24.3,packstone,crinoidal wackestones and packstones,0.78,0.74,0.04,,,258,1898,0.5,0.013
+85,24.8,packstone,crinoidal wackestones and packstones,0.71,0.99,0.03,0.708493,0.000015,301,2798,0.5,0.017
+87,25.8,packstone,crinoidal wackestones and packstones,0.2,0.6,0.03,,,333,2949,0.52,0.017
+88,26.3,packstone,crinoidal wackestones and packstones,-0.4,0.78,0.03,,,335,2917,0.49,0.015
+90,27.3,packstone,crinoidal wackestones and packstones,0.03,0.76,0.03,,,287,2686,0.5,0.017
+92,28.3,packstone,crinoidal wackestones and packstones,0.17,0.75,0.04,0.708542,0.000018,229,2103,0.47,0.016
+94,28.95,wackestone,bioclastic wackestone with large cephalopods ,-1.04,0.67,0.03,,,487,1249,0.88,0.008
+95,29.2,micritic wackestone,micritic and sparitic limestones (age = Pridoli),-1.09,0.43,0.03,,,313,2259,0.56,0.015
+98,31.1,micritic wackestone,micritic and sparitic limestones (age = Pridoli),-0.05,0.43,0.04,,,603,2023,1,0.012
