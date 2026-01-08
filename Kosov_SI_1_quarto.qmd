@@ -1,0 +1,1716 @@
+---
+title: "Supplemental information 1; Phase relationships between astronomical forcing and proxy records"
+title-block-banner: "darkturquoise"
+format:
+  html:
+    embed-resources: TRUE
+    toc: true
+    toc-depth: 3
+    code-fold: true         # code blocks can be toggled
+    css: styles.css
+    execute:
+      echo: true            # show code in HTML, but foldable
+      message: false
+      warning: false
+      cache: false
+    fig-format: svg
+    knitr:
+      opts_chunk:
+        dev: svglite
+  # docx:
+  #   code-blocks: false       # hide all code in Word
+  #   execute:
+  #     echo: false            # ensure code is hidden
+  #     message: false
+  #     warning: false
+  #     cache: false
+  # pdf:
+  #   fig-format: pdf
+execute:
+  cache: false
+---
+
+# Phase relationships between astronomical forcing and proxy records
+
+## Theoretical background
+
+Astronomical theory predicts a hierarchical organisation of astronomical cycles in which shorter-period variations are modulated in amplitude by longer-period components. A well-established example is the modulation of the 100-kyr eccentricity cycle by the highly stable 405 kyr eccentricity cycle (Hinnov, 2000; Laskar et al., 2004, 2011a; Olsen et al., 2019). Such amplitude-modulation patterns are a fundamental diagnostic for identifying astronomically forced signals in stratigraphic records and form a cornerstone of astrochronologic interpretation (Hinnov, 2000; Meyers, 2015, 2019; Zeeden et al., 2015; Trayler et al., 2023; Malinverno and Meyers, 2024).
+
+The recognition of stable amplitude modulation provides an independent test of astronomical forcing and enables assessment of how astronomical cycles, as represented in numerical solutions, are translated into sedimentary proxy records (Meyers, 2015; Zeeden et al., 2015). In particular, the phase relationship between the 405 kyr eccentricity cycle extracted directly from a proxy record and the 405 kyr eccentricity modulation obtained from the amplitude envelope of shorter-period cycles provides insight into proxy response mechanisms and insolation sensitivity (Hinnov, 2000; Laskar et al., 2004). In astronomical solutions, eccentricity acts primarily as an amplitude modulator of precession-driven insolation. As a result, the 405-kyr eccentricity signal may be weak or absent in raw insolation series, yet remains clearly expressed in the amplitude modulation of precession. Whether a proxy exhibits maxima or minima during eccentricity maxima depends on whether the proxy responds positively or negatively to insolation forcing (Weedon, 2006). Consequently, proxy extrema can correspond to either insolation maxima or minima, while the amplitude modulation itself remains phase-locked to eccentricity.
+
+## Conceptual framework
+
+Two distinct 405 kyr signals can be defined in stratigraphic data:
+
+-   A 405 kyr signal extracted directly from the proxy record.
+
+-   A 405 kyr signal extracted from the Hilbert amplitude envelope of the 100 kyr eccentricity-band signal.
+
+The latter reflects pure amplitude modulation and therefore remains in phase with the true astronomical 405 kyr eccentricity cycle, irrespective of proxy sign. In contrast, the phase of the directly extracted 405 kyr proxy signal depends on whether higher insolation produces higher or lower proxy values.To illustrate these principles, six synthetic examples and three real-world case studies are presented.
+
+```{r Load in the data for the study}
+#| echo: FALSE
+#| results: hide
+# Detect output format
+
+renderstyle_echo <- if (knitr::is_html_output()) TRUE else FALSE
+
+# Set chunk options dynamically
+knitr::opts_chunk$set(
+  echo = renderstyle_echo)
+
+show_callout <- knitr::is_html_output()
+```
+
+```{r, results='asis', echo=FALSE}
+# Only show this callout in HTML
+if (knitr::is_html_output()) {
+  cat(
+'::: {.callout-note collapse="true"}
+
+
+
+:::'
+  , sep = "\n")
+}
+```
+
+```{r 1}
+#| results: hide
+#| warning: false
+#| fig.show: TRUE  
+library(astrochron)
+library(WaverideR)
+
+
+#this function is needed to complete the wavelet tracking
+completed_series <-   function (wavelet = NULL,
+                                tracked_curve = NULL,
+                                period_up = 1.2,
+                                period_down = 0.8,
+                                extrapolate = TRUE,
+                                genplot = FALSE,
+                                keep_editable = FALSE) {
+  my.w <- wavelet
+  my.data <- cbind(wavelet$x, wavelet$y)
+  Pwert <- my.w$Power
+  maxdetect <- matrix(nrow = (nrow(Pwert)), ncol = ncol(Pwert), 0)
+  for (j in 1:ncol(Pwert)) {
+    for (i in 2:(nrow(maxdetect) - 1)) {
+      if ((Pwert[i, j] - Pwert[(i + 1), j] > 0) &
+          (Pwert[i, j] - Pwert[(i - 1), j] > 0)) {
+        maxdetect[i, j] <- 1
+      }
+    }
+  }
+  out <- tracked_curve
+  out <- na.omit(out)
+  yleft_out <- out[1, 2]
+  yright_out <- out[nrow(out), 2]
+  seq <- seq(
+    from = min(my.data[, 1]),
+    to = max(my.data[, 1]),
+    by = my.data[, 1][2] - my.data[, 1][1]
+  )
+  app <- approx(
+    x = out[, 1],
+    y = out[, 2],
+    xout = seq,
+    method = "linear",
+    yleft = yleft_out,
+    yright = yright_out
+  )
+  app <- as.data.frame(cbind(app$x, app$y))
+  periods <- as.data.frame(my.w$Period)
+  completed_series <- matrix(data = NA,
+                             nrow = nrow(app[, ]),
+                             ncol = 2)
+  completed_series[, 1] <- app[, 1]
+  
+  
+  for (i in 1:nrow(completed_series)) {
+    row_nr <- Closest(periods[, 1], app[i, 2], which = TRUE)
+    row_nr
+    row_nr <- row_nr[1]
+    if (maxdetect[row_nr, i] == 1) {
+      completed_series[i, 2] <- periods[row_nr, ]
+    }
+    else {
+      sel_row <- as.data.frame(maxdetect[, i])
+      sel_row$period <- periods[, 1]
+      sel_row <- sel_row[sel_row[, 1] > 0, ]
+      row_nr_sel_row <- Closest(sel_row[, 2], app[i, 2], which = TRUE)
+      row_nr_closest <- Closest(periods[, 1], sel_row[row_nr_sel_row, 2], which = TRUE)
+      closest_period <- periods[unlist(row_nr_closest[1]), 1]
+      if ((closest_period < (app[i, 2] * period_up)) &
+          (closest_period > (app[i, 2] * period_down))) {
+        completed_series[i, 2] <- closest_period
+      }
+    }
+  }
+  if (extrapolate == TRUE) {
+    completed_series <- na.omit(completed_series)
+    yleft_comp <- completed_series[1, 2]
+    yright_com <- completed_series[nrow(completed_series), 2]
+    seq <- seq(
+      from = min(my.data[, 1]),
+      to = max(my.data[, 1]),
+      by = my.data[, 1][2] - my.data[, 1][1]
+    )
+    app <- approx(
+      x = completed_series[, 1],
+      y = completed_series[, 2],
+      xout = seq,
+      method = "linear",
+      yleft = yleft_comp,
+      yright = yright_com
+    )
+    completed_series <- as.data.frame(cbind(app$x, app$y))
+  }
+  if (genplot == TRUE) {
+    if (keep_editable == FALSE) {
+      oldpar <- par(no.readonly = TRUE)
+      on.exit(par(oldpar))
+    }
+    plot(completed_series,
+         type = "l",
+         col = "red")
+    lines(tracked_curve, col = "black")
+  }
+  return(completed_series)
+}
+#this function is needed to do the numerical age-modelling 
+
+```
+
+# Synthetic examples
+
+## Synthetic example 1: Insolation without transformation
+
+We analyse Northern Hemisphere summer solstice insolation at 65°N from Laskar et al. (2004). The signal is dominated by precession and obliquity, whereas eccentricity primarily appears as amplitude modulation. Although the 405 kyr eccentricity cycle is weak in the raw signal, higher isolation values cluster during eccentricity maxima. The 405-kyr eccentricity cycle extracted from the Hilbert envelope of the 100-kyr eccentricity signal is in phase with the 405-kyr eccentricity cycle directly extracted from the insolation series.
+
+```{r 2}
+#| results: hide
+#| warning: false
+#| fig.show: TRUE
+#| fig.cap: "Figure 1. Insolation signal A. Insolation during the summer solstice at 65°N and the the 100 kyr cycle directly extracted from said signal B. Insolation signal and the the 405 kyr cycle directly extracted from said proxy. C.The 405 kyr cycle extracted from the Hilbert envelope of the 100 kyr eccentricity signal vs the 405 kyr cycle directly extracted from the insolation signal"
+ 
+#Example insolation curve ####
+insol_la04<- getLaskar(sol="insolation")
+insol_la04<- insol_la04[, c(1, 2)]
+insol_la04 <- insol_la04[insol_la04[,1]<4000,]
+insol_la04_100 <- taner(insol_la04,flow=1/90,fhigh=1/135,roll=10^6,xmax=1/50,genplot=FALSE,verbose=FALSE)
+insol_la04_100_hilb <- hilbert(insol_la04_100,genplot=FALSE,verbose=FALSE)
+insol_la04_100_hilb_405 <- taner(insol_la04_100_hilb,flow=1/505,fhigh=1/305,roll=10^6,xmax=1/50,genplot=FALSE,verbose=FALSE)
+insol_la04_405 <- taner(insol_la04,flow=1/505,fhigh=1/305,roll=10^6,xmax=1/50,genplot=FALSE,verbose=FALSE)
+
+
+## layout: 3 vertical panels
+layout(matrix(1:3, nrow = 3, ncol = 1), heights = c(1, 1, 1))
+par(mar = c(4.5, 4, 1, 16), oma = c(2, 0, 0, 0))
+
+### PANEL 1: Insolation + 100 kyr band + Hilbert
+plot(
+  insol_la04,
+  type = "l",
+  ylab = "Insolation \n (W/m^2) ",
+  xlab = "time (kyr)"
+)
+
+lines(insol_la04_100, col = "red")
+lines(
+  insol_la04_100_hilb[,1],
+  insol_la04_100_hilb[,2] + mean(insol_la04[,2]),
+  col = "darkred"
+)
+
+legend(
+  "right",
+  inset = -0.4,
+  xpd = TRUE,
+  bty = "n",
+  col = c("black", "red", "darkred"),
+  lty = 1,
+  legend = c(
+    "Insolation (W/m^2) \n at 65 deg North \n during the summer solstice ",
+    "100 kyr ecc",
+    "100 kyr ecc \n  Hilbert envelope"
+  )
+)
+mtext("A", side = 3, adj = 0.01, line = -1.5, font = 2)
+### PANEL 2: Insolation + 405 kyr band
+plot(
+  insol_la04,
+  type = "l",
+  ylab = "Insolation \n (W/m^2) ",
+  xlab = "time (kyr)"
+)
+
+lines(insol_la04_405, col = "blue")
+
+legend(
+  "right",
+  inset = -0.4,
+  xpd = TRUE,
+  bty = "n",
+  col = c("black", "blue"),
+  lty = 1,
+  legend = c(
+    "Insolation (W/m^2) \n at 65 deg North \n during the summer solstice ",
+    "405 kyr ecc"
+  )
+)
+mtext("B", side = 3, adj = 0.01, line = -1.5, font = 2)
+
+### PANEL 3: 405 kyr vs 405 kyr from Hilbert (dual y-axis)
+plot(
+  insol_la04_405,
+  type = "l",
+  col = "blue",
+  ylab = "Insolation \n (W/m^2) ",
+  xlab = "Time (kyr)"
+)
+
+par(new = TRUE)
+plot(
+  insol_la04_100_hilb_405,
+  type = "l",
+  col = "red",
+  axes = FALSE,
+ xlab = "time (kyr)",
+  ylab = ""
+)
+
+axis(side = 4, col = "red", col.axis = "red")
+mtext(
+  "405 kyr ecc from \n 100 kyr ecc Hilbert",
+  side = 4,
+  line = 3,
+  col = "red",cex=0.75
+)
+
+legend(
+  "right",
+  inset = -0.4,
+  xpd = TRUE,
+  bty = "n",
+  col = c("blue", "red"),
+  lty = 1,
+  legend = c(
+    "Direct 405 kyr ecc",
+    "Hilbert-derived \n 405 kyr ecc"
+  )
+)
+mtext("C", side = 3, adj = 0.01, line = -1.5, font = 2)
+
+```
+
+## Synthetic example 2: Eccentricity-only solution
+
+In the eccentricity solution of Laskar et al. (2004), the 100 kyr cycle dominates the signal, while the 405 kyr cycle dominates amplitude modulation. An in-phase relationship is observed between the 405-kyr cycle extracted from the Hilbert envelope of the 100-kyr eccentricity signal and the 405-kyr eccentricity cycle directly extracted from the eccentricity solution, reflecting the internal consistency of the astronomical solution.
+
+```{r 3}
+#| results: hide
+#| warning: false
+#| fig.show: TRUE 
+#| fig.cap: "Figure 2. eccentricty solution. 
+#| A. eccentricty solution and the 100-kyr eccentricity cycle directly extracted from said signal and the hilbert transform of the extracted 100-kyr eccentricity cycle 
+#| B. Eccentricity solution and the the 405-kyr eccentricity cycle directly extracted from said record
+#| C.The 405 kyr cycle extracted from the Hilbert envelope of the 100 kyr eccentricity signal vs the 405 kyr cycle directly extracted from the eccentricity signal."
+
+ecc_la04<- getLaskar(sol="la04")
+ecc_la04<- ecc_la04[, c(1, 4)]
+ecc_la04 <- ecc_la04[ecc_la04[,1]<4000,]
+ecc_la04_100 <- taner(ecc_la04,flow=1/90,fhigh=1/135,roll=10^6,xmax=1/50,genplot=FALSE,verbose=FALSE)
+ecc_la04_100_hilb <- hilbert(ecc_la04_100,genplot=FALSE,verbose=FALSE)
+ecc_la04_100_hilb_405 <- taner(ecc_la04_100_hilb,flow=1/505,fhigh=1/305,roll=10^6,xmax=1/50,genplot=FALSE,verbose=FALSE)
+ecc_la04_405 <- taner(ecc_la04,flow=1/505,fhigh=1/305,roll=10^6,xmax=1/50,genplot=FALSE,verbose=FALSE)
+
+
+## layout: 3 vertical panels
+layout(matrix(1:3, nrow = 3, ncol = 1), heights = c(1, 1, 1))
+par(mar = c(4.5, 4, 1, 16), oma = c(2, 0, 0, 0))
+
+### PANEL 1: clipped 2 + 100 kyr band + Hilbert
+plot(
+  ecc_la04,
+  type = "l",
+  ylab = "eccentricity",
+  xlab = ""
+)
+
+lines(ecc_la04_100, col = "red")
+lines(
+  ecc_la04_100_hilb[,1],
+  ecc_la04_100_hilb[,2] + mean(ecc_la04[,2]),
+  col = "darkred"
+)
+
+legend(
+  "right",
+  inset = -0.3,
+  xpd = TRUE,
+  bty = "n",
+  col = c("black", "red", "darkred"),
+  lty = 1,
+  legend = c(
+    "eccentricity",
+    "100-kyr ecc",
+    "100-kyr ecc \n  Hilbert envelope"
+  )
+)
+mtext("A", side = 3, adj = 0.01, line = -1.5, font = 2)
+
+### PANEL 2: Insolation + 405 kyr band
+plot(
+  ecc_la04,
+  type = "l",
+  ylab = "eccentricity",
+  xlab = ""
+)
+
+lines(ecc_la04_405, col = "blue")
+
+legend(
+  "right",
+  inset = -0.25,
+  xpd = TRUE,
+  bty = "n",
+  col = c("black", "blue"),
+  lty = 1,
+  legend = c(
+    "eccentricity",
+    "405 kyr ecc"
+  )
+)
+mtext("B", side = 3, adj = 0.01, line = -1.5, font = 2)
+
+### PANEL 3: 405 kyr vs 405 kyr from Hilbert (dual y-axis)
+plot(
+  ecc_la04_405,
+  type = "l",
+  col = "blue",
+  ylab = "eccentricity",
+  xlab = "Time (kyr)"
+)
+
+par(new = TRUE)
+plot(
+  ecc_la04_100_hilb_405,
+  type = "l",
+  col = "red",
+  axes = FALSE,
+  xlab = "",
+  ylab = ""
+)
+
+axis(side = 4, col = "red", col.axis = "red")
+mtext(
+  "405 kyr ecc from \n 100 kyr ecc Hilbert",
+  side = 4,
+  line = 3,
+  col = "red",cex=0.75
+)
+
+legend(
+  "right",
+  inset = -0.4,
+  xpd = TRUE,
+  bty = "n",
+  col = c("blue", "red"),
+  lty = 1,
+  legend = c(
+    "Direct 405 kyr ecc",
+    "Hilbert-derived \n 405 kyr ecc"
+  )
+)
+mtext("C", side = 3, adj = 0.01, line = -1.5, font = 2)
+
+```
+
+## Synthetic example 3: Clipped insolation
+
+Insolation values below the mean are replaced by the mean, enhancing amplitude modulation. Precession and obliquity remain dominant, but eccentricity modulation becomes more pronounced. The 405 kyr cycle extracted from the Hilbert envelope of the 100 kyr eccentricity signal is in phase with the 405-kyr eccentricity cycle directly extracted from the synthetic signal.
+
+```{r 4}
+#| results: hide
+#| warning: false
+#| fig.show: TRUE 
+#| fig.cap: "Figure 3. clipped insolation solution. 
+#| A. clipped insolation signal and the 100-kyr eccentricity cycle directly extracted from said signal and the hilbert transform of the extracted 100-kyr eccentricity cycle.
+#| B. Flipped and clipped insolation solution and the the 405-kyr eccentricity cycle directly extracted from said record
+#| C.The 405 kyr cycle extracted from the Hilbert envelope of the 100 kyr eccentricity signal vs the 405 kyr cycle directly extracted from the eccentricity signal."
+
+
+insol_la04_1<- insol_la04
+qt <- quantile(insol_la04[, 2], c(0.15, 0.5))
+insol_la04_1[insol_la04_1[, 2] < qt[2], 2] <- qt[2]
+
+insol_la04_1_100 <- taner(insol_la04_1,flow=1/90,fhigh=1/135,roll=10^6,xmax=1/50,genplot=FALSE,verbose=FALSE)
+insol_la04_1_100_hilb <- hilbert(insol_la04_1_100,genplot=FALSE,verbose=FALSE)
+insol_la04_1_100_hilb_405 <- taner(insol_la04_1_100_hilb,flow=1/505,fhigh=1/305,roll=10^6,xmax=1/50,genplot=FALSE,verbose=FALSE)
+insol_la04_1_405 <- taner(insol_la04_1,flow=1/505,fhigh=1/305,roll=10^6,xmax=1/50,genplot=FALSE,verbose=FALSE)
+
+
+
+## layout: 3 vertical panels
+layout(matrix(1:3, nrow = 3, ncol = 1), heights = c(1, 1, 1))
+par(mar = c(4.5, 4, 1, 16), oma = c(2, 0, 0, 0))
+
+### PANEL 1: Insolation + 100 kyr band + Hilbert
+plot(
+  insol_la04_1,
+  type = "l",
+  ylab = "Clipped",
+  xlab = "time (kyr)"
+)
+
+lines(insol_la04_1_100, col = "red")
+lines(
+  insol_la04_1_100_hilb[,1],
+  insol_la04_1_100_hilb[,2] + mean(insol_la04_1[,2]),
+  col = "darkred"
+)
+
+legend(
+  "right",
+  inset = -0.3,
+  xpd = TRUE,
+  bty = "n",
+  col = c("black", "red", "darkred"),
+  lty = 1,
+  legend = c(
+    "Clipped",
+    "100 kyr ecc",
+    "100 kyr ecc \n  Hilbert envelope"
+  )
+)
+mtext("A", side = 3, adj = 0.01, line = -1.5, font = 2)
+
+### PANEL 2: Insolation + 405 kyr band
+plot(
+  insol_la04_1,
+  type = "l",
+  ylab = "Clipped",
+  xlab = "time (kyr)"
+)
+
+lines(insol_la04_1_405, col = "blue")
+
+legend(
+  "right",
+  inset = -0.25,
+  xpd = TRUE,
+  bty = "n",
+  col = c("black", "blue"),
+  lty = 1,
+  legend = c(
+    "Clipped",
+    "405 kyr ecc"
+  )
+)
+mtext("B", side = 3, adj = 0.01, line = -1.5, font = 2)
+
+### PANEL 3: 405 kyr vs 405 kyr from Hilbert (dual y-axis)
+plot(
+  insol_la04_1_405,
+  type = "l",
+  col = "blue",
+  ylab = "Clipped",
+  xlab = "Time (kyr)"
+)
+
+par(new = TRUE)
+plot(
+  insol_la04_1_100_hilb_405,
+  type = "l",
+  col = "red",
+  axes = FALSE,
+  xlab = "",
+  ylab = ""
+)
+
+axis(side = 4, col = "red", col.axis = "red")
+mtext(
+  "405 kyr ecc from \n 100 kyr ecc Hilbert",
+  side = 4,
+  line = 3,
+  col = "red",cex=0.75
+)
+
+legend(
+  "right",
+  inset = -0.4,
+  xpd = TRUE,
+  bty = "n",
+  col = c("blue", "red"),
+  lty = 1,
+  legend = c(
+    "Direct 405 kyr ecc",
+    "Hilbert-derived \n 405 kyr ecc"
+  )
+)
+mtext("C", side = 3, adj = 0.01, line = -1.5, font = 2)
+
+```
+
+## Synthetic example 4: Flipped and clipped insolation
+
+The insolation signal is inverted and clipped above the mean, such that minima correspond to original insolation maxima. This transformation produces an anti-phase relationship between the directly extracted 405-kyr signal and the true eccentricity cycle. However, the 405 kyr signal derived from the Hilbert envelope of the 100 kyr eccentricity cycle remains in phase with astronomical eccentricity.
+
+```{r 5}
+#| results: hide
+#| warning: false
+#| fig.show: TRUE 
+#| fig.cap: "Figure 3. Flipped and clipped insolation solution. 
+#| A. Flipped and clipped insolation signal and the 100-kyr eccentricity cycle directly extracted from said signal and the hilbert transform of the extracted 100-kyr eccentricity cycle.
+#| B. Flipped and cllipped insolation solution and the the 405-kyr eccentricity cycle directly extracted from said record
+#| C.The 405 kyr cycle extracted from the Hilbert envelope of the 100 kyr eccentricity signal vs the 405 kyr cycle directly extracted from the flipped and clipped insolation signal."
+
+insol_la04_2<- insol_la04
+insol_la04_2[,2] <- max(insol_la04_2[,2])-insol_la04_2[,2]
+qt <- quantile(insol_la04_2[, 2], c(0.15, 0.5))
+insol_la04_2[insol_la04_2[, 2] > qt[2], 2] <- qt[2]
+
+insol_la04_2_100 <- taner(insol_la04_2,flow=1/90,fhigh=1/135,roll=10^6,xmax=1/50,genplot=FALSE,verbose=FALSE)
+insol_la04_2_100_hilb <- hilbert(insol_la04_2_100,genplot=FALSE,verbose=FALSE)
+insol_la04_2_100_hilb_405 <- taner(insol_la04_2_100_hilb,flow=1/505,fhigh=1/305,roll=10^6,xmax=1/50,genplot=FALSE,verbose=FALSE)
+insol_la04_2_405 <- taner(insol_la04_2,flow=1/505,fhigh=1/305,roll=10^6,xmax=1/50,genplot=FALSE,verbose=FALSE)
+
+
+
+## layout: 3 vertical panels
+layout(matrix(1:3, nrow = 3, ncol = 1), heights = c(1, 1, 1))
+par(mar = c(4.5, 4, 1, 16), oma = c(2, 0, 0, 0))
+
+### PANEL 1: clipped 2 + 100 kyr band + Hilbert
+plot(
+  insol_la04_2,
+  type = "l",
+  ylab = "Flipped and clipped",
+  xlab = ""
+)
+
+lines(insol_la04_2_100, col = "red")
+lines(
+  insol_la04_2_100_hilb[,1],
+  insol_la04_2_100_hilb[,2] + mean(insol_la04_2[,2]),
+  col = "darkred"
+)
+
+legend(
+  "right",
+  inset = -0.3,
+  xpd = TRUE,
+  bty = "n",
+  col = c("black", "red", "darkred"),
+  lty = 1,
+  legend = c(
+    "Flipped and clipped",
+    "100 kyr ecc",
+    "100 kyr ecc \n  Hilbert envelope"
+  )
+)
+mtext("A", side = 3, adj = 0.01, line = -1.5, font = 2)
+
+### PANEL 2: Insolation + 405 kyr band
+plot(
+  insol_la04_2,
+  type = "l",
+  ylab = "Flipped and clipped",
+  xlab = ""
+)
+
+lines(insol_la04_2_405, col = "blue")
+
+legend(
+  "right",
+  inset = -0.3,
+  xpd = TRUE,
+  bty = "n",
+  col = c("black", "blue"),
+  lty = 1,
+  legend = c(
+    "Flipped and clipped",
+    "405 kyr ecc"
+  )
+)
+mtext("B", side = 3, adj = 0.01, line = -1.5, font = 2)
+
+### PANEL 3: 405 kyr vs 405 kyr from Hilbert (dual y-axis)
+plot(
+  insol_la04_2_405,
+  type = "l",
+  col = "blue",
+  ylab = "405 kyr ecc",
+  xlab = "Time (kyr)"
+)
+
+par(new = TRUE)
+plot(
+  insol_la04_2_100_hilb_405,
+  type = "l",
+  col = "red",
+  axes = FALSE,
+  xlab = "",
+  ylab = ""
+)
+
+axis(side = 4, col = "red", col.axis = "red")
+mtext(
+  "405 kyr ecc from \n 100 kyr ecc Hilbert",
+  side = 4,
+  line = 3,
+  col = "red",cex=0.75
+)
+
+legend(
+  "right",
+  inset = -0.4,
+  xpd = TRUE,
+  bty = "n",
+  col = c("blue", "red"),
+  lty = 1,
+  legend = c(
+    "Direct 405 kyr ecc",
+    "Hilbert-derived \n 405 kyr ecc"
+  )
+)
+mtext("C", side = 3, adj = 0.01, line = -1.5, font = 2)
+
+```
+
+## Synthetic example 5: Positive proxy response with noise
+
+The insolation signal is clipped blow the mean, such that maxima still correspond to maxima original isolation signal. Red noise is added to the clipped signal, followed by the addition of a smoothed version of the same signal using a 35-kyr window. Despite increased complexity, a consistent in phase relationship is observed between the 405-kyr eccentricity cycle directly extracted from the signal and the same cycle but then extracted from the Hilbert transform of the 100-kyr eccentricity cycle.
+
+```{r 7}
+#| results: hide
+#| warning: false
+#| fig.cap: "Figure 4. Synthetic signal. 
+#| A. Synthetic signal and the 100-kyr eccentricity cycle directly extracted from said signal and the hilbert transform of the extracted 100-kyr eccentricity cycle.
+#| B.Synthetic sginal solution and the the 405-kyr eccentricity cycle directly extracted from said record
+#| C.The 405 kyr cycle extracted from the Hilbert envelope of the 100 kyr eccentricity signal vs the 405 kyr cycle directly extracted from the Synthetic signal."
+
+
+#Synthetic example 2 ####
+set.seed(1)
+
+
+#la11 <- getLaskar(sol="la11")
+#insol <- getLaskar(sol="insolation")
+synth_2 <- insol_la04
+qt <- quantile(synth_2[, 2], c(0.15, 0.5))
+synth_2[synth_2[, 2] < qt[2], 2] <- qt[2]
+synth_2[, 2] <- synth_2[, 2] + colorednoise::colored_noise(
+  timesteps = nrow(synth_2),
+  mean = 0,
+  sd = 5,
+  phi = 0.99
+)
+synth_2[, 2] <- synth_2[, 2] + colorednoise::colored_noise(
+  timesteps = nrow(synth_2),
+  mean = 0,
+  sd = 10,
+  phi = 0.6
+)
+
+synth_2_win <- mwStats(synth_2, win = 35, ends = TRUE,genplot=FALSE,verbose=FALSE)
+synth_2[, 2] <- synth_2[, 2] + synth_2_win[, 2] * 2
+synth_2 <- sortNave(synth_2,genplot=FALSE,verbose=FALSE)
+synth_2 <- linterp(synth_2,genplot=FALSE,verbose=FALSE)
+
+
+synth_2_100 <- taner(synth_2,flow=1/90,fhigh=1/135,roll=10^6,xmax=1/50,genplot=FALSE,verbose=FALSE)
+synth_2_100_hilb <- hilbert(synth_2_100,genplot=FALSE,verbose=FALSE)
+synth_2_100_hilb_405 <- taner(synth_2_100_hilb,flow=1/505,fhigh=1/305,roll=10^6,xmax=1/50,genplot=FALSE,verbose=FALSE)
+synth_2_405 <- taner(synth_2,flow=1/505,fhigh=1/305,roll=10^6,xmax=1/50,genplot=FALSE,verbose=FALSE)
+
+
+## layout: 3 vertical panels
+layout(matrix(1:3, nrow = 3, ncol = 1), heights = c(1, 1, 1))
+par(mar = c(4.5, 4, 1, 16), oma = c(2, 0, 0, 0))
+
+### PANEL 1: Insolation + 100 kyr band + Hilbert
+plot(
+  synth_2,
+  type = "l",
+  ylab = "Synthetic signal",
+  xlab = "time (kyr)"
+)
+
+lines(synth_2_100, col = "red")
+lines(
+  synth_2_100_hilb[,1],
+  synth_2_100_hilb[,2] + mean(synth_2[,2]),
+  col = "darkred"
+)
+
+legend(
+  "right",
+  inset = -0.3,
+  xpd = TRUE,
+  bty = "n",
+  col = c("black", "red", "darkred"),
+  lty = 1,
+  legend = c(
+    "Synthetic signal",
+    "100 kyr ecc",
+    "100 kyr ecc \n  Hilbert envelope"
+  )
+)
+mtext("A", side = 3, adj = 0.01, line = -1.5, font = 2)
+
+### PANEL 2: Insolation + 405 kyr band
+plot(
+  synth_2,
+  type = "l",
+  ylab = "Synthetic signal",
+  xlab = "time (kyr)"
+)
+
+lines(synth_2_405, col = "blue")
+
+legend(
+  "right",
+  inset = -0.25,
+  xpd = TRUE,
+  bty = "n",
+  col = c("black", "blue"),
+  lty = 1,
+  legend = c(
+    "Raw insolation",
+    "405 kyr ecc"
+  )
+)
+mtext("B", side = 3, adj = 0.01, line = -1.5, font = 2)
+
+### PANEL 3: 405 kyr vs 405 kyr from Hilbert (dual y-axis)
+plot(
+  synth_2_405,
+  type = "l",
+  col = "blue",
+  ylab = "405 kyr ecc",
+  xlab = "Time (kyr)"
+)
+
+
+par(new = TRUE)
+plot(
+  synth_2_100_hilb_405,
+  type = "l",
+  col = "red",
+  axes = FALSE,
+  xlab = "",
+  ylab = ""
+)
+
+axis(side = 4, col = "red", col.axis = "red")
+mtext(
+  "405 kyr ecc from \n 100 kyr ecc Hilbert",
+  side = 4,
+  line = 3,
+  col = "red",cex=0.75
+)
+
+legend(
+  "right",
+  inset = -0.4,
+  xpd = TRUE,
+  bty = "n",
+  col = c("blue", "red"),
+  lty = 1,
+  legend = c(
+    "Direct 405 kyr ecc",
+    "Hilbert-derived \n 405 kyr ecc"
+  )
+)
+mtext("C", side = 3, adj = 0.01, line = -1.5, font = 2)
+
+```
+
+## Synthetic example 6: Flipped, clipped insolation and Noise-contaminated transformed signal
+
+The insolation signal is inverted and clipped above the mean, such that minima correspond to original isolation maxima. Red noise is added to the flipped and clipped signal, followed by the addition of a smoothed version of the same signal using a 35-kyr window. Finally, a square root is applied to the signal. Despite increased complexity, a consistent antiphased relationship is observed between the 405-kyr eccentricity cycle directly extracted from the signal and the same cycle but then extracted from the Hilbert transform of the 100-kyr eccentricity cycle.
+
+```{r 6}
+#| results: hide
+#| warning: false
+#| fig.show: TRUE 
+#| fig.cap: "Figure 5. Synthetic signal. 
+#| A. Synthetic signal and the 100-kyr eccentricity cycle directly extracted from said signal and the hilbert transform of the extracted 100-kyr eccentricity cycle.
+#| B.Synthetic sginal  and the the 405-kyr eccentricity cycle directly extracted from said record
+#| C.The 405 kyr cycle extracted from the Hilbert envelope of the 100 kyr eccentricity signal vs the 405 kyr cycle directly extracted from the synthetic signal."
+
+
+#Synthetic example 1 ####
+set.seed(1)
+
+#la11 <- getLaskar(sol="la11")
+#insol <- getLaskar(sol="insolation")
+synth_1 <- insol_la04
+qt <- quantile(synth_1[, 2], c(0.15, 0.5))
+synth_1[synth_1[, 2] < qt[2], 2] <- qt[2]
+synth_1[, 2] <- max(synth_1[, 2]) - synth_1[, 2] + colorednoise::colored_noise(
+  timesteps = nrow(synth_1),
+  mean = 0,
+  sd = 7.5,
+  phi = 0.99
+)
+synth_1[, 2] <- synth_1[, 2] + colorednoise::colored_noise(
+  timesteps = nrow(synth_1),
+  mean = 0,
+  sd = 10,
+  phi = 0.6
+)
+
+synth_1_win <- mwStats(synth_1, win = 35, ends = TRUE,genplot=FALSE,verbose=FALSE)
+synth_1[, 2] <- synth_1[, 2] + synth_1_win[, 2] * 2
+synth_1[, 2] <- sqrt(synth_1[, 2])
+synth_1 <- sortNave(synth_1,genplot=FALSE,verbose=FALSE)
+synth_1 <- linterp(synth_1,genplot=FALSE,verbose=FALSE)
+
+
+synth_1_100 <- taner(synth_1,flow=1/90,fhigh=1/135,roll=10^6,xmax=1/50,genplot=FALSE,verbose=FALSE)
+synth_1_100_hilb <- hilbert(synth_1_100,genplot=FALSE,verbose=FALSE)
+synth_1_100_hilb_405 <- taner(synth_1_100_hilb,flow=1/505,fhigh=1/305,roll=10^6,xmax=1/50,genplot=FALSE,verbose=FALSE)
+synth_1_405 <- taner(synth_1,flow=1/505,fhigh=1/305,roll=10^6,xmax=1/50,genplot=FALSE,verbose=FALSE)
+
+
+## layout: 3 vertical panels
+layout(matrix(1:3, nrow = 3, ncol = 1), heights = c(1, 1, 1))
+par(mar = c(4.5, 4, 1, 16), oma = c(2, 0, 0, 0))
+
+### PANEL 1: Insolation + 100 kyr band + Hilbert
+plot(
+  synth_1,
+  type = "l",
+  ylab = "Synthetic signal",
+  xlab = "time (kyr)"
+)
+
+lines(synth_1_100, col = "red")
+lines(
+  synth_1_100_hilb[,1],
+  synth_1_100_hilb[,2] + mean(synth_1[,2]),
+  col = "darkred"
+)
+
+legend(
+  "right",
+  inset = -0.3,
+  xpd = TRUE,
+  bty = "n",
+  col = c("black", "red", "darkred"),
+  lty = 1,
+  legend = c(
+    "Synthetic signal",
+    "100 kyr ecc",
+    "100 kyr ecc \n  Hilbert envelope"
+  )
+)
+mtext("A", side = 3, adj = 0.01, line = -1.5, font = 2)
+
+### PANEL 2: Insolation + 405 kyr band
+plot(
+  synth_1,
+  type = "l",
+  ylab = "Synthetic signal",
+  xlab = "time (kyr)"
+)
+
+lines(synth_1_405, col = "blue")
+
+legend(
+  "right",
+  inset = -0.25,
+  xpd = TRUE,
+  bty = "n",
+  col = c("black", "blue"),
+  lty = 1,
+  legend = c(
+    "Synthetic signal",
+    "405 kyr ecc"
+  )
+)
+mtext("B", side = 3, adj = 0.01, line = -1.5, font = 2)
+
+### PANEL 3: 405 kyr vs 405 kyr from Hilbert (dual y-axis)
+plot(
+  synth_1_405,
+  type = "l",
+  col = "blue",
+  ylab = "405 kyr ecc",
+  xlab = "Time (kyr)"
+)
+
+par(new = TRUE)
+plot(
+  synth_1_100_hilb_405,
+  type = "l",
+  col = "red",
+  axes = FALSE,
+  xlab = "",
+  ylab = ""
+)
+
+axis(side = 4, col = "red", col.axis = "red")
+mtext(
+  "405 kyr ecc from \n 100 kyr ecc Hilbert",
+  side = 4,
+  line = 3,
+  col = "red",cex=0.75
+)
+
+legend(
+  "right",
+  inset = -0.4,
+  xpd = TRUE,
+  bty = "n",
+  col = c("blue", "red"),
+  lty = 1,
+  legend = c(
+    "Direct 405 kyr ecc",
+    "Hilbert-derived \n 405 kyr ecc"
+  )
+)
+mtext("C", side = 3, adj = 0.01, line = -1.5, font = 2)
+
+```
+
+# Real-world examples
+
+## ODP Site 926, Ceara Rise
+
+ODP Leg 154 Site 926, located at the Ceara Rise, shows that magnetic susceptibility maxima, represented by the darkest (lowest) greyscale values, are interpreted as reflecting enhanced terrigenous input from the Amazon. This input is controlled by Northern Hemisphere summer insolation rather than austral insolation, as sediment delivery is mediated by the North Equatorial Countercurrent, which is strongest during boreal summer and reflects a large fraction of the Amazon plume into the equatorial Atlantic. Consequently, magnetic susceptibility (MS) maxima are tuned to precession minima, which correspond to Northern Hemisphere summer insolation minima. Because precession is antiphased between hemispheres, these intervals align with austral summer insolation maxima. On longer timescales, precession-driven greyscale variability is weakest during eccentricity minima, when precessional forcing is damped. This results in intervals of reduced contrast and darker greyscale lows that are clustered around eccentricity minima. In this case, an antiphased relationship is observed between the 405-kyr eccentricity cycle extracted from the Hilbert transform of the 100-kyr eccentricity cycle and the 405-kyr eccentricity cycle directly extracted from the signal, consistent with the observation that the lowest greyscale values correspond to insolation minima.
+
+```{r }
+#| results: hide
+#| warning: false
+#| fig.show: TRUE
+#| fig.cap: "Figure 5. ODP Leg 154 Site 926 greyscale record. 
+#| A. Greyscale record and the 100-kyr eccentricity cycle directly extracted from said signal and the hilbert transform of the extracted 100-kyr eccentricity cycle.
+#| B.Greyscale record and the the 405-kyr eccentricity cycle directly extracted from said record
+#| C.The 405 kyr cycle extracted from the Hilbert envelope of the 100 kyr eccentricity signal vs the 405 kyr cycle directly extracted from the greyscale record." 
+#example ODP Leg 154 Site 926 ####
+#DATA set 2 ODP Leg 154 Site 926
+#Christian Zeeden, Frederik Hilgen, Thomas Westerhold, Lucas Lourens, Ursula Röhl, Torsten Bickert,
+#Revised Miocene splice, astronomical tuning and calcareous plankton biochronology of ODP Site 926 between 5 and 14.4Ma,
+#Palaeogeography, Palaeoclimatology, Palaeoecology,
+#Volume 369,
+#2013,
+#Pages 430-451,
+#ISSN 0031-0182,
+#https://doi.org/10.1016/j.palaeo.2012.11.009.
+
+IODP926_grey <- read.csv(
+  "https://raw.githubusercontent.com/stratigraphy/Kosov-cyclostrat/main/IODP926_grey.csv"
+)
+IODP926_age <- read.csv(
+  "https://raw.githubusercontent.com/stratigraphy/Kosov-cyclostrat/main/IODP926_age.csv"
+)
+IODP926_grey <- sortNave(IODP926_grey,genplot=FALSE,verbose=FALSE)
+IODP926_grey_time <- tune(IODP926_grey, IODP926_age,genplot=FALSE,verbose=FALSE)
+IODP926_grey_time <- sortNave(IODP926_grey_time,genplot=FALSE,verbose=FALSE)
+IODP926_grey_time <- IODP926_grey_time[IODP926_grey_time[, 1] < IODP926_grey_time[1, 1]+4000, ]
+IODP926_grey_time <- linterp(IODP926_grey_time,genplot=FALSE,verbose=FALSE)
+
+
+IODP926_grey_time_100 <- taner(
+  IODP926_grey_time,
+  flow = 1 / 90,
+  fhigh = 1 / 135,
+  roll = 10^20,
+  xmax = 1 / 50,genplot=FALSE,verbose=FALSE
+)
+IODP926_grey_time_100_hilb <- hilbert(IODP926_grey_time_100,genplot=FALSE,verbose=FALSE)
+IODP926_grey_time_100_hilb_405 <- taner(
+  IODP926_grey_time_100_hilb,
+  flow = 1 / 305,
+  fhigh = 1 / 505,
+  roll = 10^20,
+  xmax = 1 / 50,genplot=FALSE,verbose=FALSE
+)
+
+IODP926_grey_time_405 <- taner(
+  IODP926_grey_time,
+  flow = 1 / 305,
+  fhigh = 1 / 505,
+  roll = 10^20,
+  xmax = 1 / 50,genplot=FALSE,verbose=FALSE
+)
+
+## layout: 3 vertical panels
+layout(matrix(1:3, nrow = 3, ncol = 1), heights = c(1, 1, 1))
+par(mar = c(4.5, 4, 1, 16), oma = c(2, 0, 0, 0))
+
+### PANEL 1: Insolation + 100 kyr band + Hilbert
+plot(
+  IODP926_grey_time,
+  type = "l",
+  ylab = "Grey scale",
+  xlab = "time (kyr)"
+)
+
+lines(IODP926_grey_time_100, col = "red")
+lines(
+  IODP926_grey_time_100_hilb[,1],
+  IODP926_grey_time_100_hilb[,2] + mean(IODP926_grey_time[,2]),
+  col = "darkred"
+)
+
+legend(
+  "right",
+  inset = -0.3,
+  xpd = TRUE,
+  bty = "n",
+  col = c("black", "red", "darkred"),
+  lty = 1,
+  legend = c(
+    "Grey scale",
+    "100 kyr ecc",
+    "100 kyr ecc \n  Hilbert envelope"
+  )
+)
+mtext("A", side = 3, adj = 0.01, line = -1.5, font = 2)
+
+### PANEL 2: Insolation + 405 kyr band
+plot(
+  IODP926_grey_time,
+  type = "l",
+  ylab = "Grey scale",
+  xlab = "time (kyr)"
+)
+
+lines(IODP926_grey_time_405, col = "blue")
+
+legend(
+  "right",
+  inset = -0.25,
+  xpd = TRUE,
+  bty = "n",
+  col = c("black", "blue"),
+  lty = 1,
+  legend = c(
+    "Grey scale",
+    "405 kyr ecc"
+  )
+)
+mtext("B", side = 3, adj = 0.01, line = -1.5, font = 2)
+
+### PANEL 3: 405 kyr vs 405 kyr from Hilbert (dual y-axis)
+plot(
+  IODP926_grey_time_405,
+  type = "l",
+  col = "blue",
+  ylab = "405 kyr ecc",
+  xlab = "Time (kyr)"
+)
+
+
+par(new = TRUE)
+plot(
+  IODP926_grey_time_100_hilb_405,
+  type = "l",
+  col = "red",
+  axes = FALSE,
+  xlab = "",
+  ylab = ""
+)
+
+axis(side = 4, col = "red", col.axis = "red")
+mtext(
+  "405 kyr ecc from \n 100 kyr ecc Hilbert",
+  side = 4,
+  line = 3,
+  col = "red",cex=0.75
+)
+
+legend(
+  "right",
+  inset = -0.4,
+  xpd = TRUE,
+  bty = "n",
+  col = c("blue", "red"),
+  lty = 1,
+  legend = c(
+    "Direct 405 kyr ecc",
+    "Hilbert-derived \n 405 kyr ecc"
+  )
+)
+mtext("C", side = 3, adj = 0.01, line = -1.5, font = 2)
+
+```
+
+## ODP Site 1051 Walvis Ridge a\* colour reflectance
+
+The a\* colour reflectance data (red/green ratio) from Walvis Ridge and ODP Site 1051 (Meyers, 2015) are known to faithfully track maxima in astronomical eccentricity, particularly the 100-kyr and 405-kyr cycles (Westerhold et al., 2007; Zeebe and Lourens, 2019). In this real-world example, we examine the a\* colour reflectance data as presented in Meyers (2015), following the same interpretation of the imprint of astronomical cycles. The reprocessed data reveal an in-phase relationship between the 405-kyr cycle extracted from the Hilbert envelope of the 100-kyr signal and the directly extracted 405-kyr cycle. This consistency supports a positive proxy response to eccentricity-modulated climate forcing and further validates the established relationship between the eccentricity cycles extracted from a and astronomical eccentricity (Zeebe and Lourens, 2019).
+
+```{r }
+#| results: hide
+#| warning: false
+#| fig.show: TRUE
+#| fig.cap: "Figure 6. ODP Site 1051 Walvis Ridge a* colour reflectance record. 
+#| A. Reflectance record and the 100-kyr eccentricity cycle directly extracted from said signal and the hilbert transform of the extracted 100-kyr eccentricity cycle.
+#| B. Reflectance record and the the 405-kyr eccentricity cycle directly extracted from said record
+#| C.The 405 kyr cycle extracted from the Hilbert envelope of the 100 kyr eccentricity signal vs the 405 kyr cycle directly extracted from the reflectance record." 
+
+#Meyers, Stephen R. "The evaluation of eccentricity‐related amplitude
+#modulation and bundling in paleoclimate data: An inverse approach 
+#for astrochronologic testing and time scale optimization." 
+#Paleoceanography 30, no. 12 (2015): 1625-1640.
+# a* (red/green ratio) color reflectance data from ODP Site 1262
+#emonstrate that the a* data through this interval have a strong positive correlation with iron XRF counts, #and increases in both of these parameters are interpreted to reflect greater terrigenous content. 
+# with insolation maxima resulting in higher runoff and higher terrigenous content
+
+# Load the package Astrochron
+library(astrochron)
+
+# Obtain Site 1262 dataset 
+dat <- getData("1262-a*")
+
+# Isolate data of interest, between 117.36 and 139.75 mcd
+petm=iso(dat,xmin=117.36,xmax=139.75,genplot=FALSE,verbose=FALSE)
+# Interpolate data to the median sampling interval of 2 cm
+petm_2cm=linterp(petm, dt=0.02,genplot=FALSE,verbose=FALSE)
+# Estimate precession periods between 53-56 Myr (for target)
+p=etp(tmin=53000,tmax=56000,dt=5,eWt=0,oWt=0,pWt=1,esinw=T,genplot=FALSE,verbose=FALSE)
+# Define the target periods
+targetP=c(23.04147,21.81818,18.56436)
+# Conduct TimeOpt analysis again, output optimal time series, bandpassed series, amplitude envelope and TimeOpt-reconstructed eccentricity
+res2=timeOpt(detrend(petm_2cm,genplot=FALSE,verbose=FALSE),flow=0.035,fhigh=0.065,sedmin=0.5,sedmax=3,
+             targetP=targetP,numsed=100,output=2,genplot=FALSE,verbose=FALSE)
+
+#plot(res2[,1],res2[,2],type="l")
+res2 <- linterp(res2,genplot=FALSE,verbose=FALSE)
+
+res2_100 <- taner(
+  res2,
+  flow = 1 / 90,
+  fhigh = 1 / 135,
+  roll = 10^20,
+  xmax = 1 / 50,genplot=FALSE,verbose=FALSE
+)
+res2_100_hilb <- hilbert(res2_100,genplot=FALSE,verbose=FALSE)
+res2_100_hilb_405 <- taner(
+  res2_100_hilb,
+  flow = 1 / 305,
+  fhigh = 1 / 505,
+  roll = 10^20,
+  xmax = 1 / 50,genplot=FALSE,verbose=FALSE
+)
+
+res2_405 <- taner(
+  res2,
+  flow = 1 / 305,
+  fhigh = 1 / 505,
+  roll = 10^20,
+  xmax = 1 / 50,genplot=FALSE,verbose=FALSE
+)
+
+## layout: 3 vertical panels
+layout(matrix(1:3, nrow = 3, ncol = 1), heights = c(1, 1, 1))
+par(mar = c(4.5, 4, 1, 16), oma = c(2, 0, 0, 0))
+
+### PANEL 1: Insolation + 100 kyr band + Hilbert
+plot(
+  res2,
+  type = "l",
+  ylab = "a-value",
+  xlab = "time (kyr)"
+)
+
+lines(res2_100, col = "red")
+lines(
+  res2_100_hilb[,1],
+  res2_100_hilb[,2] + mean(res2[,2]),
+  col = "darkred"
+)
+
+legend(
+  "right",
+  inset = -0.275,
+  xpd = TRUE,
+  bty = "n",
+  col = c("black", "red", "darkred"),
+  lty = 1,
+  legend = c(
+    "Grey scale",
+    "100 kyr ecc",
+    "100 kyr ecc \n  Hilbert envelope"
+  )
+)
+mtext("A", side = 3, adj = 0.01, line = -1.5, font = 2)
+
+### PANEL 2: Insolation + 405 kyr band
+plot(
+  res2,
+  type = "l",
+  ylab = "a-value",
+  xlab = "time (kyr)"
+)
+
+lines(res2_405, col = "blue")
+
+legend(
+  "right",
+  inset = -0.25,
+  xpd = TRUE,
+  bty = "n",
+  col = c("black", "blue"),
+  lty = 1,
+  legend = c(
+    "Grey scale",
+    "405 kyr ecc"
+  )
+)
+mtext("B", side = 3, adj = 0.01, line = -1.5, font = 2)
+
+### PANEL 3: 405 kyr vs 405 kyr from Hilbert (dual y-axis)
+plot(
+  res2_405,
+  type = "l",
+  col = "blue",
+  ylab = "405 kyr ecc",
+  xlab = "Time (kyr)"
+)
+
+
+par(new = TRUE)
+plot(
+  res2_100_hilb_405,
+  type = "l",
+  col = "red",
+  axes = FALSE,
+  xlab = "",
+  ylab = ""
+)
+
+axis(side = 4, col = "red", col.axis = "red")
+mtext(
+  "405 kyr ecc from \n 100 kyr ecc Hilbert",
+  side = 4,
+  line = 3,
+  col = "red",cex=0.75
+)
+
+legend(
+  "right",
+  inset = -0.4,
+  xpd = TRUE,
+  bty = "n",
+  col = c("blue", "red"),
+  lty = 1,
+  legend = c(
+    "Direct 405 kyr ecc",
+    "Hilbert-derived \n 405 kyr ecc"
+  ))
+mtext("C", side = 3, adj = 0.01, line = -1.5, font = 2)
+
+```
+
+##Zumaia and Sopelana sections
+
+Magnetic susceptibility and colour reflectance data from the Maastrichtian Zumaia and Sopelana sections (Batenburg et al., 2012, 2014) were minimally tuned to the 405-kyr eccentricity cycle, using the same interpretation of the astronomical cycles as presented in Batenburg et al. (2012, 2014). The period (m) of the 405-kyr eccentricity cycle was first identified in the wavelet scalogram of the magnetic susceptibility record, followed by a tracking of this period in the wavelet scalogram. Next, the tracked period (m) curve of the 405-kyr eccentricity cycle was used to extract said cycle from the wavelet scalogram. This extracted 405-kyr eccentricity cycle was then used to perform minimal tuning to construct the age model for the section. Both the magnetic susceptibility and colour reflectance records were then converted to the time domain using the same age model. The magnetic susceptibility record exhibits an in-phase relationship between the 405-kyr eccentricity cycle directly extracted from the record and the 405-kyr eccentricity extracted from the Hilbert transform of the 100-kyr eccentricity cycle and the 405-kyr cycle directly extracted from the signal, validating the established proxy-astronomical cycle relationship. In contrast, the colour reflectance record shows an antiphased relationship between these same cycles, reflecting opposite proxy responses to the same astronomical forcing while preserving consistency with the underlying eccentricity modulation.
+
+```{r }
+#| results: hide
+#| warning: false
+#| fig.show: TRUE 
+
+#Example Zumaia Sopelana section####
+#Sietske J. Batenburg, Andrew S. Gale, Mario Sprovieri,
+#Frederik J. Hilgen, Nicolas Thibault, Myriam Boussaha, 
+#Xabier Orue-Etxebarria; An astronomical time scale for the 
+#Maastrichtian based on the Zumaia and Sopelana sections
+#(Basque country, northern Spain). Journal of the Geological Society 2014;
+#; 171 (2): 165–180. doi: https://doi.org/10.1144/jgs2013-015
+
+#Sietske J. Batenburg, Mario Sprovieri, Andrew S. Gale, 
+#Frederik J. Hilgen, Silja Hüsing, Jacques Laskar, 
+#Diederik Liebrand, Fabrizio Lirer,
+#Xabier Orue-Etxebarria, Nicola Pelosi, Jan Smit,
+#Cyclostratigraphy and astronomical 
+#tuning of the Late Maastrichtian at
+#Zumaia (Basque country, Northern Spain),
+#Earth and Planetary Science Letters,
+#Volumes 359–360,
+#2012,
+#Pages 264-278,
+#ISSN 0012-821X,
+#https://doi.org/10.1016/j.epsl.2012.09.054.
+
+```
+
+```{r }
+#| results: hide
+#| warning: false
+#| fig.show: TRUE 
+#| fig.cap: "Figure 7. Zumaia Sopelana composite section magnetic susceptibillity record. 
+#| A. Magnetic susceptibillity record and the 100-kyr eccentricity cycle directly extracted from said
+#| signal and the hilbert transform of the extracted 100-kyr eccentricity cycle.
+#| Magnetic susceptibillity record and the the 405-kyr eccentricity cycle directly extracted from said
+#| record C.The 405 kyr cycle extracted from the Hilbert envelope of the 100 kyr eccentricity signal vs the
+#| 405-kyr cycle directly extracted from the magnetic susceptibillity record."
+
+Zumaia <- read.csv(
+  "https://raw.githubusercontent.com/stratigraphy/Kosov-cyclostrat/main/Zumaia.csv"
+)
+
+Zumaia <- Zumaia[5:nrow(Zumaia),]
+mag_net <- Zumaia[,c(1,2)]
+mag_net <- na.omit(mag_net)
+
+mag_net_wt <- analyze_wavelet(
+  data = mag_net,
+  dj = 1/200,
+  lowerPeriod = 0.1,
+  upperPeriod = 256,
+  verbose = FALSE,
+  omega_nr = 6
+)
+
+# plot_wavelet(
+#   wavelet = mag_net_wt,
+#   n.levels = 100,
+#   useRaster = TRUE,
+#   periodlab = "Period (metres)",
+#   x_lab = "depth (metres)",
+#   keep_editable=FALSE,add_avg=TRUE
+# )
+# 
+# mag_net_405_track <-
+#   track_period_wavelet(
+#     astro_cycle = 405,
+#     wavelet = mag_net_wt,
+#     n.levels = 100,
+#     periodlab = "Period (metres)",
+#     x_lab = "depth (metres)"
+#   )
+# 
+# mag_net_405_track_comp <- completed_series(
+#   wavelet = mag_net_wt,
+#   tracked_curve = mag_net_405_track,
+#   period_up = 1.2,
+#   period_down = 0.8,
+#   extrapolate = TRUE,
+#   genplot = TRUE,
+#   keep_editable = FALSE
+# )
+# mag_net_405_track_comp <- noLow(mag_net_405_track_comp,smooth=.1,output=2,genplot=T,verbose=T)
+# write.csv(mag_net_405_track_comp,"mag_net_405_track_comp.csv")
+mag_net_405_track_comp <- read.csv(
+  "https://raw.githubusercontent.com/stratigraphy/Kosov-cyclostrat/main/mag_net_405_track_comp.csv"
+)
+
+mag_net_405_track_comp <- mag_net_405_track_comp[,c(2,3)]
+
+mag_net_405_ecc  <- extract_signal(
+  tracked_cycle_curve = mag_net_405_track_comp,
+  wavelet = mag_net_wt,
+  period_up = 1.25,
+  period_down = 0.85,
+  add_mean = TRUE,
+  tracked_cycle_period = 405,
+  extract_cycle = 405,
+  tune = FALSE,
+  plot_residual = FALSE
+)
+
+mag_net_405_ecc_min_tun <- minimal_tuning(
+  data = mag_net_405_ecc,
+  pts = 5,
+  cycle = 405,
+  tune_opt = "max",
+  output = 0,
+  genplot = FALSE,
+  keep_editable = FALSE
+)
+mag_net_time <- tune(mag_net,controlPts=mag_net_405_ecc_min_tun[,c(1,4)],
+                     extrapolate=F,genplot=F,check=T,verbose=F)
+
+mag_net_time <- linterp(mag_net_time,genplot=FALSE,verbose=FALSE)
+# mag_net_time_wt <- analyze_wavelet(
+#   data = mag_net_time,
+#   dj = 1/200,
+#   lowerPeriod = 150,
+#   upperPeriod = 6500,
+#   verbose = FALSE,
+#   omega_nr = 7
+# )
+
+mag_net_time_100 <- taner(mag_net_time,flow=1/90,fhigh=1/135,roll=10^10,xmax=1/50,genplot=FALSE,verbose=FALSE)
+mag_net_time_100_hilb <- hilbert(mag_net_time_100,genplot=FALSE,verbose=FALSE)
+mag_net_time_100_hilb  <- taner(mag_net_time_100_hilb,flow=1/135,fhigh=1/20000,roll=10^100,xmax=1/50,genplot=FALSE,verbose=FALSE) 
+mag_net_time_100_hilb_405 <- taner(mag_net_time_100_hilb,flow=1/(485),fhigh=1/325,roll=10^10,xmax=1/50,genplot=FALSE,verbose=FALSE)
+
+mag_net_time_405 <- taner(mag_net_time,flow=1/(325),fhigh=1/485,roll=10^6,xmax=1/50,genplot=FALSE,verbose=FALSE)
+mag_net_time_405_hilb <- hilbert(mag_net_time_405,genplot=FALSE,verbose=FALSE)
+mag_net_time_405_hilb  <- taner(mag_net_time_405_hilb,flow=1/405,fhigh=1/20000,roll=10^100,xmax=1/50,genplot=FALSE,verbose=FALSE) 
+
+
+## layout: 3 vertical panels
+layout(matrix(1:3, nrow = 3, ncol = 1), heights = c(1, 1, 1))
+par(mar = c(4.5, 4, 1, 16), oma = c(2, 0, 0, 0))
+
+### PANEL 1: Insolation + 100 kyr band + Hilbert
+plot(
+  mag_net_time,
+  type = "l",
+  ylab = "mag. net.",
+  xlab = "time (kyr)"
+)
+
+lines(mag_net_time_100, col = "red")
+lines(
+  mag_net_time_100_hilb[,1],
+  mag_net_time_100_hilb[,2] + mean(mag_net_time[,2]),
+  col = "darkred"
+)
+
+legend(
+  "right",
+  inset = -0.3,
+  xpd = TRUE,
+  bty = "n",
+  col = c("black", "red", "darkred"),
+  lty = 1,
+  legend = c(
+    "mag. net.",
+    "100 kyr ecc",
+    "100 kyr ecc \n  Hilbert envelope"
+  )
+)
+mtext("A", side = 3, adj = 0.01, line = -1.5, font = 2)
+
+### PANEL 2: Insolation + 405 kyr band
+plot(
+  mag_net_time,
+  type = "l",
+  ylab = "mag. net.",
+  xlab = "time (kyr)"
+)
+
+lines(mag_net_time_405, col = "blue")
+
+legend(
+  "right",
+  inset = -0.25,
+  xpd = TRUE,
+  bty = "n",
+  col = c("black", "blue"),
+  lty = 1,
+  legend = c(
+    "mag. net.",
+    "405 kyr ecc"
+  )
+)
+mtext("B", side = 3, adj = 0.01, line = -1.5, font = 2)
+
+### PANEL 3: 405 kyr vs 405 kyr from Hilbert (dual y-axis)
+plot(
+  mag_net_time_405,
+  type = "l",
+  col = "blue",
+  ylab = "405 kyr ecc",
+  xlab = "Time (kyr)"
+)
+
+
+par(new = TRUE)
+plot(
+  mag_net_time_100_hilb_405,
+  type = "l",
+  col = "red",
+  axes = FALSE,
+  xlab = "",
+  ylab = ""
+)
+
+axis(side = 4, col = "red", col.axis = "red")
+mtext(
+  "405 kyr ecc from \n 100 kyr ecc Hilbert",
+  side = 4,
+  line = 3,
+  col = "red",cex=0.75
+)
+
+legend(
+  "right",
+  inset = -0.4,
+  xpd = TRUE,
+  bty = "n",
+  col = c("blue", "red"),
+  lty = 1,
+  legend = c(
+    "Direct 405 kyr ecc",
+    "Hilbert-derived \n 405 kyr ecc"
+  )
+)
+mtext("C", side = 3, adj = 0.01, line = -1.5, font = 2)
+
+```
+
+```{r }
+#| results: hide
+#| warning: false
+#| fig.show: TRUE 
+#| fig.cap: "Figure 7. Zumaia Sopelana composite section reflectance record. A. Reflectance record and the 100-kyr eccentricity cycle directly extracted from said signal and the hilbert transform of the extracted 100-kyr eccentricity cycle. B. Reflectance record and the the 405-kyr eccentricity cycle directly extracted from said record. C.The 405 kyr cycle extracted from the Hilbert envelope of the 100 kyr eccentricity signal vs the 405 kyr cycle directly extracted from the  reflectance record."
+
+###reflectance ####
+Zumaia <- read.csv(
+  "https://raw.githubusercontent.com/stratigraphy/Kosov-cyclostrat/main/Zumaia.csv"
+)
+
+
+Zumaia <- Zumaia[5:nrow(Zumaia),]
+ref_net <- Zumaia[,c(1,3)]
+ref_net <- na.omit(ref_net)
+
+ref_net_time_abs <- tune(ref_net,controlPts=mag_net_405_ecc_min_tun[,c(1,4)],
+                     extrapolate=F,genplot=F,check=T,verbose=F)
+
+ref_net_time_abs <- linterp(ref_net_time_abs,genplot=FALSE,verbose=FALSE)
+
+
+
+ref_net_abs <- linterp(ref_net_time_abs,genplot=FALSE,verbose=FALSE)
+ref_net_abs_100 <- taner(ref_net_abs,flow=1/90,fhigh=1/135,roll=10^6,xmax=1/50,detrend=TRUE,demean = TRUE,genplot=FALSE,verbose=FALSE)
+ref_net_abs_100_hilb <- hilbert(ref_net_abs_100,genplot=FALSE,verbose=FALSE)
+ref_net_abs_100_hilb  <- taner(ref_net_abs_100_hilb,flow=1/135*1.5,fhigh=1/20000,roll=10^100,xmax=1/50,genplot=FALSE,verbose=FALSE) 
+ref_net_abs_100_hilb_405 <- taner(ref_net_abs_100_hilb,flow=1/(325),fhigh=1/485,roll=10^10,xmax=1/50,genplot=FALSE,verbose=FALSE)
+ref_net_abs_405 <- taner(ref_net_abs,flow=1/325,fhigh=1/485,roll=10^6,xmax=1/50,genplot=FALSE,verbose=FALSE)
+
+## layout: 3 vertical panels
+layout(matrix(1:3, nrow = 3, ncol = 1), heights = c(1, 1, 1))
+par(mar = c(4.5, 4, 1, 16), oma = c(2, 0, 0, 0))
+
+### PANEL 1: Insolation + 100 kyr band + Hilbert
+plot(
+  ref_net_abs,
+  type = "l",
+  ylab = "reflectance",
+  xlab = "time (kyr)"
+)
+
+lines(ref_net_abs_100, col = "red")
+lines(
+  ref_net_abs_100_hilb[,1],
+  ref_net_abs_100_hilb[,2] + mean(ref_net_abs[,2]),
+  col = "darkred"
+)
+
+legend(
+  "right",
+  inset = -0.3,
+  xpd = TRUE,
+  bty = "n",
+  col = c("black", "red", "darkred"),
+  lty = 1,
+  legend = c(
+    "reflectance",
+    "100 kyr ecc",
+    "100 kyr ecc \n  Hilbert envelope"
+  )
+)
+mtext("A", side = 3, adj = 0.01, line = -1.5, font = 2)
+
+### PANEL 2: Insolation + 405 kyr band
+plot(
+  ref_net_abs,
+  type = "l",
+  ylab = "reflectance",
+  xlab = "time (kyr)"
+)
+
+lines(ref_net_abs_405, col = "blue")
+
+legend(
+  "right",
+  inset = -0.25,
+  xpd = TRUE,
+  bty = "n",
+  col = c("black", "blue"),
+  lty = 1,
+  legend = c(
+    "reflectance",
+    "405 kyr ecc"
+  )
+)
+mtext("B", side = 3, adj = 0.01, line = -1.5, font = 2)
+### PANEL 3: 405 kyr vs 405 kyr from Hilbert (dual y-axis)
+plot(
+  ref_net_abs_405,
+  type = "l",
+  col = "blue",
+  ylab = "405 kyr ecc",
+  xlab = "Time (kyr)"
+)
+
+
+par(new = TRUE)
+plot(
+  ref_net_abs_100_hilb_405,
+  type = "l",
+  col = "red",
+  axes = FALSE,
+  xlab = "",
+  ylab = ""
+)
+
+axis(side = 4, col = "red", col.axis = "red")
+mtext(
+  "405 kyr ecc from \n 100 kyr ecc Hilbert",
+  side = 4,
+  line = 3,
+  col = "red",cex=0.75
+)
+
+legend(
+  "right",
+  inset = -0.4,
+  xpd = TRUE,
+  bty = "n",
+  col = c("blue", "red"),
+  lty = 1,
+  legend = c(
+    "Direct 405 kyr ecc",
+    "Hilbert-derived \n 405 kyr ecc"
+  )
+
+)
+mtext("C", side = 3, adj = 0.01, line = -1.5, font = 2)
+
+```
+
+# Implications
+
+Across both synthetic and real-world examples, the 405 kyr eccentricity cycle extracted from the Hilbert envelope of the 100 kyr eccentricity signal consistently remains in phase with the true astronomical 405 kyr cycle. This reflects the unidirectional nature of amplitude modulation, which is independent of the relationship between the proxy signal and the isolation signal. In contrast, the phase of the 405 kyr cycle extracted directly from proxy records depends on whether the proxy responds positively or negatively to insolation forcing. Phase relationships between these two 405 kyr expressions, therefore, provide a (robust) diagnostic for interpreting proxy behaviour and for linking stratigraphic cyclicity to astronomical forcing.
+
+# References
+
+Batenburg, S. J., Sprovieri, M., Gale, A. S., Hilgen, F. J., Hüsing, S., Laskar, J., ... & Smit, J. (2012). Cyclostratigraphy and astronomical tuning of the Late Maastrichtian at Zumaia (Basque country, Northern Spain). Earth and Planetary Science Letters, 359, 264-278.
+
+Batenburg, S. J., Gale, A. S., Sprovieri, M., Hilgen, F. J., Thibault, N., Boussaha, M., & Orue-Etxebarria, X. (2014). An astronomical time scale for the Maastrichtian based on the Zumaia and Sopelana sections (Basque country, northern Spain). Journal of the Geological Society, 171(2), 165-180.
+
+Hinnov, L.A., 2000, New Perspectives on Orbitally Forced Stratigraphy: Annual Review of Earth and Planetary Sciences, v. 28, p. 419–475, doi:10.1177/0741713604268894.
+
+Laskar, J., Robutel, P., Joutel, F., Gastineau, M., Correia, a. C.M., and Levrard, B., 2004, A long-term numerical solution for the insolation quantities of the Earth: Astronomy and Astrophysics, v. 428, p. 261–285, doi:10.1051/0004-6361:20041335.
+
+Laskar, J., Fienga, A., Gastineau, M., and Manche, H., 2011a, La2010: A new orbital solution for the long term motion of the Earth: Astronomy & Astrophysics, v. 4, p. 17, doi:10.1051/0004-6361/201116836.
+
+Malinverno, A., and Meyers, S.R., 2024, Bayesian Estimation of Past Astronomical Frequencies, Lunar Distance, and Length of Day From Sediment Cycles: Geochemistry, Geophysics, Geosystems, v. 25, doi:10.1029/2023GC011176.
+
+Meyers, S.R., 2015, The evaluation of eccentricity-related amplitude modulation and bundling in paleoclimate data: An inverse approach for astrochronologic testing and time scale optimization: Paleoceanography, v. 30, p. 1625–1640, doi:10.1002/2015PA002850.
+
+Meyers, S.R., 2019, Cyclostratigraphy and the problem of astrochronologic testing: Earth-Science Reviews, v. 190, p. 190–223, doi:10.1016/j.earscirev.2018.11.015.
+
+Olsen, P.E., Laskar, J., Kent, D. V., Kinney, S.T., Reynolds, D.J., Sha, J., and Whiteside, J.H., 2019, Mapping solar system chaos with the geological orrery: Proceedings of the National Academy of Sciences of the United States of America, v. 166, p. 10664–10673, doi:10.1073/pnas.1813901116.
+
+Trayler, R., Schmitz, M., Schmitz, M., Meyers, S.R., and Meyers, S.R., 2023, Bayesian Integration of Astrochronology and Radioisotope Geochronology: Geochronology, p. 1–29, doi:https://doi.org/10.5194/gchron-2023-22.
+
+Weedon, G.P., 2006, Time Series Analysis and Cyclostratigraphy: Examining stratigraphic records of environmental cycles: Geoscience Canada, v. 33, p. 32–33.
+
+Westerhold, T., U. Röhl, J. Laskar, I. Raffi, J. Bowles, L. J. Lourens, and J. C. Zachos (2007), On the duration of magnetochrons C24r and C25n and the timing of early Eocene global warming events: Implications from the Ocean Drilling Program Leg 208 Walvis Ridge depth transect, Paleoceanography, 22, PA2201, doi:10.1029/2006PA001322.
+
+Zeeden, C., Meyers, S.R., Lourens, L.J., and Hilgen, F.J., 2015, Testing astronomically tuned age models: Paleoceanography, v. 30, p. 369–383, doi:10.1002/2014PA002762.
